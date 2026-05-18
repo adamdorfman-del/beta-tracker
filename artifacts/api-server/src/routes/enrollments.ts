@@ -1,0 +1,264 @@
+import { Router } from "express";
+import { db, betaEnrollmentsTable, usersTable, clientsTable, betaFeaturesTable, auditLogsTable, outreachBatchEnrollmentsTable } from "../lib/db";
+import { ok, err, parsePagination } from "../lib/helpers";
+import { eq, and, desc, count, inArray, isNotNull } from "drizzle-orm";
+
+const router = Router();
+
+const OUTREACH_WINDOW_DAYS = 14;
+const ACTIVE_STATUSES = ["nominated", "csm_pending", "csm_approved", "outreach_sent"] as const;
+
+async function getAdminUser() {
+  const [admin] = await db.select().from(usersTable).where(eq(usersTable.role, "admin")).limit(1);
+  if (admin) return admin;
+  const [fallback] = await db.select().from(usersTable).limit(1);
+  if (!fallback) throw new Error("No users found in the system.");
+  return fallback;
+}
+
+// GET /api/enrollments
+router.get("/", async (req, res) => {
+  try {
+    const { skip, take } = parsePagination(req.query as Record<string, string>);
+    const { feature: featureId, client: clientId, status, approvalStatus } = req.query as Record<string, string>;
+
+    const conditions = [];
+    if (featureId) conditions.push(eq(betaEnrollmentsTable.featureId, featureId));
+    if (clientId) conditions.push(eq(betaEnrollmentsTable.clientId, clientId));
+    if (status) conditions.push(eq(betaEnrollmentsTable.testerStatus, status as any));
+    if (approvalStatus) conditions.push(eq(betaEnrollmentsTable.csmApprovalStatus, approvalStatus as any));
+
+    const enrollments = await db.select().from(betaEnrollmentsTable)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(betaEnrollmentsTable.createdAt))
+      .offset(skip).limit(take);
+
+    const [{ value: total }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
+      .where(conditions.length ? and(...conditions) : undefined);
+
+    // Enrich with client, feature, user refs
+    const clientIds = [...new Set(enrollments.map(e => e.clientId))];
+    const featureIds = [...new Set(enrollments.map(e => e.featureId))];
+    const userIds = [...new Set([
+      ...enrollments.map(e => e.assignedById),
+      ...enrollments.map(e => e.csmApprovedById).filter(Boolean) as string[],
+    ])];
+
+    const [enrichedClients, enrichedFeatures, enrichedUsers] = await Promise.all([
+      clientIds.length ? db.select().from(clientsTable).where(inArray(clientsTable.id, clientIds)) : Promise.resolve([]),
+      featureIds.length ? db.select({ id: betaFeaturesTable.id, name: betaFeaturesTable.name, status: betaFeaturesTable.status, idealClientCriteria: betaFeaturesTable.idealClientCriteria })
+        .from(betaFeaturesTable).where(inArray(betaFeaturesTable.id, featureIds)) : Promise.resolve([]),
+      userIds.length ? db.select().from(usersTable).where(inArray(usersTable.id, userIds)) : Promise.resolve([]),
+    ]);
+
+    // Enrich clients with csmOwner
+    const csmOwnerIds = [...new Set(enrichedClients.map(c => c.csmOwnerId))];
+    const csmOwners = csmOwnerIds.length ? await db.select().from(usersTable).where(inArray(usersTable.id, csmOwnerIds)) : [];
+    const csmOwnerMap = Object.fromEntries(csmOwners.map(u => [u.id, u]));
+    const clientMap = Object.fromEntries(enrichedClients.map(c => [c.id, { ...c, csmOwner: csmOwnerMap[c.csmOwnerId] ?? null }]));
+    const featureMap = Object.fromEntries(enrichedFeatures.map(f => [f.id, f]));
+    const userMap = Object.fromEntries(enrichedUsers.map(u => [u.id, u]));
+
+    const enriched = enrollments.map(e => ({
+      ...e,
+      client: clientMap[e.clientId] ?? null,
+      feature: featureMap[e.featureId] ?? null,
+      assignedBy: userMap[e.assignedById] ?? null,
+      csmApprovedBy: e.csmApprovedById ? (userMap[e.csmApprovedById] ?? null) : null,
+    }));
+
+    return ok(res, { enrollments: enriched, total, skip, take });
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// POST /api/enrollments
+router.post("/", async (req, res) => {
+  try {
+    const adminUser = await getAdminUser();
+    const { clientId, featureId, force } = req.body;
+    if (!clientId || !featureId) return err(res, "clientId and featureId are required.");
+
+    const [client] = await db.select().from(clientsTable).where(eq(clientsTable.id, clientId));
+    if (!client) return err(res, "Client not found.", 404);
+
+    const [feature] = await db.select().from(betaFeaturesTable).where(eq(betaFeaturesTable.id, featureId));
+    if (!feature) return err(res, "Feature not found.", 404);
+
+    if (client.accountHealth === "red") {
+      return err(res, "Client account health is red — nomination blocked.");
+    }
+    if (feature.status === "closing" || feature.status === "closed") {
+      return err(res, "Beta is no longer accepting nominations.");
+    }
+
+    const [existing] = await db.select().from(betaEnrollmentsTable)
+      .where(and(eq(betaEnrollmentsTable.clientId, clientId), eq(betaEnrollmentsTable.featureId, featureId)));
+    if (existing) return res.status(409).json({ error: "Client is already nominated for this beta." });
+
+    const windowStart = new Date();
+    windowStart.setDate(windowStart.getDate() - OUTREACH_WINDOW_DAYS);
+    const [{ value: activeCount }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
+      .where(and(
+        eq(betaEnrollmentsTable.clientId, clientId),
+        inArray(betaEnrollmentsTable.testerStatus, [...ACTIVE_STATUSES] as any)
+      ));
+
+    if (activeCount >= 3 && !force) {
+      return res.status(409).json({
+        error: `Client has ${activeCount} active enrollments in the last ${OUTREACH_WINDOW_DAYS} days. Pass force: true to override.`,
+        conflict: true,
+      });
+    }
+
+    const warning = client.accountHealth === "yellow"
+      ? "Client account health is yellow — proceed with CSM discretion."
+      : undefined;
+
+    const [{ value: confirmedCount }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
+      .where(and(
+        eq(betaEnrollmentsTable.featureId, featureId),
+        inArray(betaEnrollmentsTable.testerStatus, ["confirmed", "active", "completed"] as any)
+      ));
+
+    const [enrollment] = await db.insert(betaEnrollmentsTable).values({
+      clientId, featureId,
+      assignedById: adminUser.id,
+      isOverflow: confirmedCount >= feature.targetTesterCount,
+      testerStatus: "nominated",
+      csmApprovalStatus: "pending",
+    }).returning();
+
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaEnrollment", entityId: enrollment.id, action: "nominated",
+      changedById: adminUser.id, nextState: enrollment as any,
+    });
+
+    return res.status(201).json({ enrollment, warning });
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// DELETE /api/enrollments/:id
+router.delete("/:id", async (req, res) => {
+  try {
+    const adminUser = await getAdminUser();
+    const { id } = req.params;
+    const [enrollment] = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
+    if (!enrollment) return err(res, "Enrollment not found.", 404);
+
+    const preOutreach = ["nominated", "csm_pending", "csm_approved"];
+    if (!preOutreach.includes(enrollment.testerStatus)) {
+      return err(res, "Cannot remove an enrollment after outreach has been sent.");
+    }
+
+    await db.delete(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaEnrollment", entityId: id, action: "removed",
+      changedById: adminUser.id, priorState: enrollment as any,
+    });
+
+    return ok(res, { success: true });
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// POST /api/enrollments/:id/approve
+router.post("/:id/approve", async (req, res) => {
+  try {
+    const adminUser = await getAdminUser();
+    const { id } = req.params;
+
+    const [enrollment] = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
+    if (!enrollment) return err(res, "Enrollment not found.", 404);
+
+    const [updated] = await db.update(betaEnrollmentsTable).set({
+      csmApprovalStatus: "approved",
+      csmApprovedById: adminUser.id,
+      csmApprovedAt: new Date(),
+      testerStatus: "csm_approved",
+      updatedAt: new Date(),
+    }).where(eq(betaEnrollmentsTable.id, id)).returning();
+
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaEnrollment", entityId: id, action: "csm_approved",
+      changedById: adminUser.id, priorState: enrollment as any, nextState: updated as any,
+    });
+
+    return ok(res, updated);
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// POST /api/enrollments/:id/reject
+router.post("/:id/reject", async (req, res) => {
+  try {
+    const adminUser = await getAdminUser();
+    const { id } = req.params;
+    const { reason } = req.body;
+    if (!reason?.trim()) return err(res, "reason is required.");
+
+    const [enrollment] = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
+    if (!enrollment) return err(res, "Enrollment not found.", 404);
+
+    const [updated] = await db.update(betaEnrollmentsTable).set({
+      csmApprovalStatus: "rejected",
+      csmRejectionReason: reason,
+      testerStatus: "dropped",
+      droppedAt: new Date(),
+      updatedAt: new Date(),
+    }).where(eq(betaEnrollmentsTable.id, id)).returning();
+
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaEnrollment", entityId: id, action: "csm_rejected",
+      changedById: adminUser.id, priorState: enrollment as any, nextState: updated as any,
+    });
+
+    return ok(res, updated);
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// PUT /api/enrollments/:id/status
+router.put("/:id/status", async (req, res) => {
+  try {
+    const adminUser = await getAdminUser();
+    const { id } = req.params;
+    const { testerStatus, dropReason } = req.body;
+    if (!testerStatus) return err(res, "testerStatus is required.");
+
+    const [enrollment] = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
+    if (!enrollment) return err(res, "Enrollment not found.", 404);
+
+    const timestamps: Record<string, Date> = {};
+    if (testerStatus === "confirmed") timestamps.confirmedAt = new Date();
+    if (testerStatus === "completed") timestamps.completedAt = new Date();
+    if (testerStatus === "dropped") timestamps.droppedAt = new Date();
+
+    const [updated] = await db.update(betaEnrollmentsTable).set({
+      testerStatus, dropReason, ...timestamps, updatedAt: new Date(),
+    }).where(eq(betaEnrollmentsTable.id, id)).returning();
+
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaEnrollment", entityId: id, action: "status_change",
+      changedById: adminUser.id, priorState: enrollment as any, nextState: updated as any,
+    });
+
+    return ok(res, updated);
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+export default router;
