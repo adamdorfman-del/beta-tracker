@@ -41,4 +41,17 @@ app.use(clerkMiddleware());
 
 app.use("/api", router);
 
+
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendPath = path.resolve(__dirname, '../../beta-tracker/dist/public');
+
+app.use(express.static(frontendPath));
+
+app.get('/{*splat}', (req, res) => {
+  res.sendFile(path.join(frontendPath, 'index.html'));
+});
+
 export default app;
