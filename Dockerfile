@@ -21,9 +21,6 @@ ENV NODE_ENV=production
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 
-ARG VITE_CLERK_PROXY_URL
-ENV VITE_CLERK_PROXY_URL=$VITE_CLERK_PROXY_URL
-
 RUN pnpm --filter @workspace/beta-tracker build
 RUN pnpm --filter @workspace/api-server build
 
