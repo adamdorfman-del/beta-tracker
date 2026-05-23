@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, boolean, pgEnum, date } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, boolean, pgEnum, date, uniqueIndex } from "drizzle-orm/pg-core";
 import { usersTable } from "./users.ts";
 
 export const healthStatusEnum = pgEnum("health_status", ["green", "yellow", "red"]);
@@ -7,7 +7,7 @@ export const segmentEnum = pgEnum("segment", ["Strategic", "Enterprise", "Commer
 export const clientsTable = pgTable("clients", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   name: text("name").notNull(),
-  crmId: text("crm_id"),
+  crmId: text("crm_id").unique(),
   csmOwnerId: text("csm_owner").notNull().references(() => usersTable.id),
   tier: integer("tier"),
   segment: segmentEnum("segment"),

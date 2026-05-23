@@ -80,6 +80,7 @@ router.post("/", async (req, res) => {
     return ok(res, { client }, 201);
   } catch (e: any) {
     const pgCode = e?.cause?.code ?? e?.code;
+    if (pgCode === "23505") return err(res, "A client with that ID already exists.", 409);
     if (pgCode === "23503") return err(res, "CSM owner not found.", 400);
     req.log.error(e);
     return err(res, "Internal error", 500);
@@ -120,7 +121,10 @@ router.post("/bulk", async (req, res) => {
       results.push({ row: i + 1, success: true, client });
     } catch (e: any) {
       const pgCode = e?.cause?.code ?? e?.code;
-      results.push({ row: i + 1, success: false, error: pgCode === "23503" ? "CSM not found." : "Database error." });
+      const error = pgCode === "23505"
+        ? `Client ID "${raw.crmId}" already exists.`
+        : pgCode === "23503" ? "CSM not found." : "Database error.";
+      results.push({ row: i + 1, success: false, error });
     }
   }
 
