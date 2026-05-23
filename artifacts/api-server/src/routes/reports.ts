@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, betaFeaturesTable, betaEnrollmentsTable, clientsTable, usersTable } from "../lib/db";
 import { ok, err, parsePagination, parseDateRange } from "../lib/helpers";
-import { eq, and, desc, count, inArray, isNotNull, lte, gte, notInArray } from "drizzle-orm";
+import { eq, and, desc, count, inArray, isNotNull, lte, gte, notInArray, arrayOverlaps } from "drizzle-orm";
 
 const router = Router();
 
@@ -42,7 +42,7 @@ router.get("/at-risk", async (req, res) => {
 
     const underFilledFeatures = await db.select().from(betaFeaturesTable)
       .where(and(
-        inArray(betaFeaturesTable.status, ["recruiting", "outreach_sent"] as any),
+        arrayOverlaps(betaFeaturesTable.status as any, ["recruiting", "outreach_sent"]),
         lte(betaFeaturesTable.startDate, soonStart.toISOString().split("T")[0])
       ));
 

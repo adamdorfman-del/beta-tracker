@@ -6,14 +6,14 @@ import { BetaStatusBadge } from "@/components/StatusBadge";
 import { ClientModal } from "@/components/ClientModal";
 import { ClientImportModal } from "@/components/ClientImportModal";
 
-const SEGMENTS = ["Enterprise", "Commercial", "Midmarket", "Channel", "SMB"];
+const SEGMENTS = ["Strategic", "Enterprise", "Commercial", "Professional", "Channel"];
 
 const SEGMENT_COLORS: Record<string, string> = {
-  Enterprise:  "bg-indigo-50 text-indigo-700",
-  Commercial:  "bg-blue-50 text-blue-700",
-  Midmarket:   "bg-violet-50 text-violet-700",
-  Channel:     "bg-orange-50 text-orange-700",
-  SMB:         "bg-teal-50 text-teal-700",
+  Strategic:    "bg-purple-50 text-purple-700",
+  Enterprise:   "bg-indigo-50 text-indigo-700",
+  Commercial:   "bg-blue-50 text-blue-700",
+  Professional: "bg-teal-50 text-teal-700",
+  Channel:      "bg-orange-50 text-orange-700",
 };
 
 export default function ClientsPage() {

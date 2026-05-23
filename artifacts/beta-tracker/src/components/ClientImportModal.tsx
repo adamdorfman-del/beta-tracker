@@ -8,8 +8,8 @@ const TEMPLATE_HEADERS = [
 ];
 
 const SEGMENT_MAP: Record<string, string> = {
-  enterprise: "Enterprise", commercial: "Commercial", midmarket: "Midmarket",
-  channel: "Channel", smb: "SMB",
+  strategic: "Strategic", enterprise: "Enterprise", commercial: "Commercial",
+  professional: "Professional", channel: "Channel",
 };
 const HEALTH_MAP: Record<string, string> = {
   green: "green", yellow: "yellow", red: "red",
@@ -121,7 +121,7 @@ export function ClientImportModal({ onClose, onImported }: Props) {
                 <p className="text-xs text-blue-700">
                   <strong>Optional:</strong> Account Health, Vertical, Contract Renewal Date, Product Subscriptions, Last Outreach Date
                 </p>
-                <p className="text-xs text-blue-600 mt-1">CSM Email must match an existing stakeholder. Dates: YYYY-MM-DD. Segment: Enterprise / Commercial / Midmarket / Channel / SMB.</p>
+                <p className="text-xs text-blue-600 mt-1">CSM Email must match an existing stakeholder. Dates: YYYY-MM-DD. Segment: Strategic / Enterprise / Commercial / Professional / Channel.</p>
               </div>
 
               <div className="flex items-center gap-3">

@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, integer, boolean, pgEnum, date } from "drizzl
 import { usersTable } from "./users.ts";
 
 export const healthStatusEnum = pgEnum("health_status", ["green", "yellow", "red"]);
-export const segmentEnum = pgEnum("segment", ["Enterprise", "Commercial", "Midmarket", "Channel", "SMB"]);
+export const segmentEnum = pgEnum("segment", ["Strategic", "Enterprise", "Commercial", "Professional", "Channel"]);
 
 export const clientsTable = pgTable("clients", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),

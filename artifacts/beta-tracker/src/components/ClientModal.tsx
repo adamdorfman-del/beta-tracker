@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
-const SEGMENTS = ["Enterprise", "Commercial", "Midmarket", "Channel", "SMB"] as const;
+const SEGMENTS = ["Strategic", "Enterprise", "Commercial", "Professional", "Channel"] as const;
 const HEALTH_OPTIONS = [
   { value: "green",  label: "Green" },
   { value: "yellow", label: "Yellow" },
