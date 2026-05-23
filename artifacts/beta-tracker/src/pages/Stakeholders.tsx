@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { RoleBadge } from "@/components/RoleBadge";
+import { useCurrentUser, canWrite } from "@/hooks/useCurrentUser";
 
-type Role = "pm" | "pmm" | "csm" | "coordinator" | "admin";
+type Role = "pm" | "pmm" | "csm" | "admin";
 
 interface User {
   id: string;
@@ -17,13 +18,13 @@ const ROLE_LABELS: Record<Role, string> = {
   pm: "PM",
   pmm: "PMM",
   csm: "CSM",
-  coordinator: "Coordinator",
   admin: "Admin",
 };
 
 const EMPTY_FORM = { name: "", email: "", role: "pm" as Role, image: "" };
 
 export default function StakeholdersPage() {
+  const currentUser = useCurrentUser();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState<string>("all");
@@ -103,12 +104,14 @@ export default function StakeholdersPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">Stakeholders</h1>
-        <button
-          onClick={openAdd}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          + Add stakeholder
-        </button>
+        {canWrite(currentUser) && (
+          <button
+            onClick={openAdd}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            + Add stakeholder
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-3">
@@ -172,18 +175,20 @@ export default function StakeholdersPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-3">
-                      <button
-                        onClick={() => openEdit(u)}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-800"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => setDeleteTarget(u)}
-                        className="text-xs font-medium text-red-500 hover:text-red-700"
-                      >
-                        Delete
-                      </button>
+                      {canWrite(currentUser) && (<>
+                        <button
+                          onClick={() => openEdit(u)}
+                          className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => setDeleteTarget(u)}
+                          className="text-xs font-medium text-red-500 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </>)}
                     </div>
                   </td>
                 </tr>

@@ -68,4 +68,7 @@ export const api = {
     update: (id: string, body: object) => apiFetch(`/users/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     remove: (id: string) => apiFetch(`/users/${id}`, { method: "DELETE" }),
   },
+  me: {
+    get: () => apiFetch("/me"),
+  },
 };

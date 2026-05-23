@@ -4,7 +4,6 @@ const ROLE_STYLES: Record<string, StylePair> = {
   pm:          { background: "#dbeafe", color: "#1d4ed8" },
   pmm:         { background: "#ede9fe", color: "#6d28d9" },
   csm:         { background: "#dcfce7", color: "#15803d" },
-  coordinator: { background: "#fef9c3", color: "#a16207" },
   admin:       { background: "#fee2e2", color: "#b91c1c" },
 };
 
@@ -12,7 +11,6 @@ const ROLE_LABELS: Record<string, string> = {
   pm:          "PM",
   pmm:         "PMM",
   csm:         "CSM",
-  coordinator: "Coordinator",
   admin:       "Admin",
 };
 

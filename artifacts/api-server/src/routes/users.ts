@@ -2,10 +2,12 @@ import { Router } from "express";
 import { db, usersTable } from "../lib/db";
 import { ok, err } from "../lib/helpers";
 import { eq } from "drizzle-orm";
+import { requireRole } from "../middlewares/requireRole";
 
 const router = Router();
+const pmOrAdmin = requireRole("pm", "admin");
 
-const VALID_ROLES = ["pm", "pmm", "csm", "coordinator", "admin"] as const;
+const VALID_ROLES = ["pm", "pmm", "csm", "admin"] as const;
 type Role = typeof VALID_ROLES[number];
 
 function validateUserBody(body: any): { data: { name: string; email: string; role: Role; image: string | null } } | { error: string } {
@@ -28,7 +30,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/users
-router.post("/", async (req, res) => {
+router.post("/", pmOrAdmin, async (req, res) => {
   const validated = validateUserBody(req.body);
   if ("error" in validated) return err(res, validated.error, 400);
   try {
@@ -43,7 +45,7 @@ router.post("/", async (req, res) => {
 });
 
 // PUT /api/users/:id
-router.put("/:id", async (req, res) => {
+router.put("/:id", pmOrAdmin, async (req, res) => {
   const validated = validateUserBody(req.body);
   if ("error" in validated) return err(res, validated.error, 400);
   try {
@@ -63,7 +65,7 @@ router.put("/:id", async (req, res) => {
 });
 
 // DELETE /api/users/:id
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", pmOrAdmin, async (req, res) => {
   try {
     const [user] = await db
       .delete(usersTable)

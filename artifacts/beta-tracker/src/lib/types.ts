@@ -3,7 +3,7 @@ export type TesterStatus = "nominated" | "csm_pending" | "csm_approved" | "outre
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type BatchStatus = "pending" | "ready" | "sent";
 export type HealthStatus = "green" | "yellow" | "red";
-export type UserRole = "pm" | "pmm" | "csm" | "coordinator" | "admin";
+export type UserRole = "pm" | "pmm" | "csm" | "admin";
 export type CloseReason = "completed" | "cancelled" | "merged" | "paused";
 
 export interface User {

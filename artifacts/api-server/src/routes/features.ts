@@ -3,8 +3,10 @@ import { db, betaFeaturesTable, usersTable, betaEnrollmentsTable, auditLogsTable
 import { ok, err, parsePagination } from "../lib/helpers";
 import { eq, and, or, desc, count, inArray } from "drizzle-orm";
 import { logger } from "../lib/logger";
+import { requireRole } from "../middlewares/requireRole";
 
 const router = Router();
+const pmOrAdmin = requireRole("pm", "admin");
 
 // GET /api/features
 router.get("/", async (req, res) => {
@@ -48,7 +50,7 @@ router.get("/", async (req, res) => {
 });
 
 // POST /api/features
-router.post("/", async (req, res) => {
+router.post("/", pmOrAdmin, async (req, res) => {
   try {
     const { name, ownerPmId, ownerPmmId, startDate, outreachDeadline, idealClientCriteria, targetTesterCount, jiraEpicLink } = req.body;
     if (!name || !ownerPmId || !ownerPmmId || !startDate || !outreachDeadline || !jiraEpicLink) {
@@ -117,7 +119,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // PUT /api/features/:id
-router.put("/:id", async (req, res) => {
+router.put("/:id", pmOrAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const body = req.body;
@@ -142,7 +144,7 @@ router.put("/:id", async (req, res) => {
 });
 
 // POST /api/features/:id/close
-router.post("/:id/close", async (req, res) => {
+router.post("/:id/close", pmOrAdmin, async (req, res) => {
   try {
     const adminUser = await getAdminUser();
     const { id } = req.params;
@@ -194,7 +196,7 @@ router.post("/:id/close", async (req, res) => {
 });
 
 // POST /api/features/:id/clone
-router.post("/:id/clone", async (req, res) => {
+router.post("/:id/clone", pmOrAdmin, async (req, res) => {
   try {
     const adminUser = await getAdminUser();
     const { id } = req.params;

@@ -6,6 +6,7 @@ import { HealthDot } from "@/components/HealthDot";
 import { SlotFill } from "@/components/SlotFill";
 import { EditFeatureModal } from "@/components/EditFeatureModal";
 import type { BetaFeature, BetaEnrollment, Client } from "@/lib/types";
+import { useCurrentUser, canWrite } from "@/hooks/useCurrentUser";
 
 function ApproveRejectButtons({ enrollmentId, onDone }: { enrollmentId: string; onDone: () => void }) {
   const [showReject, setShowReject] = useState(false);
@@ -202,6 +203,7 @@ function NominatePanel({ featureId, candidates, onNominated }: {
 
 export default function FeatureDetailPage({ params: { id } }: { params: { id: string } }) {
   const [feature, setFeature] = useState<BetaFeature & { enrollments: BetaEnrollment[] } | null>(null);
+  const currentUser = useCurrentUser();
   const [candidates, setCandidates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
@@ -289,19 +291,21 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
             )}
           </div>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {!isClosed && (
-            <button onClick={() => setEditOpen(true)}
+        {canWrite(currentUser) && (
+          <div className="flex gap-2 flex-wrap">
+            {!isClosed && (
+              <button onClick={() => setEditOpen(true)}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                Edit
+              </button>
+            )}
+            <button onClick={clone}
               className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-              Edit
+              Clone as Template
             </button>
-          )}
-          <button onClick={clone}
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-            Clone as Template
-          </button>
-          {!isClosed && <CloseFeatureButton featureId={id} onDone={load} />}
-        </div>
+            {!isClosed && <CloseFeatureButton featureId={id} onDone={load} />}
+          </div>
+        )}
       </div>
 
       {editOpen && (

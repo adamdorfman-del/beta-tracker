@@ -5,6 +5,7 @@ import { BetaStatusBadge } from "@/components/StatusBadge";
 import { SlotFill } from "@/components/SlotFill";
 import type { BetaFeature, BetaStatus } from "@/lib/types";
 import { NewFeatureModal } from "@/components/NewFeatureModal";
+import { useCurrentUser, canWrite } from "@/hooks/useCurrentUser";
 
 const ALL_STATUSES: BetaStatus[] = ["draft", "recruiting", "outreach_sent", "full", "in_progress", "closing", "closed"];
 
@@ -16,6 +17,7 @@ export default function FeaturesPage() {
   const take = 20;
 
   const [, navigate] = useLocation();
+  const currentUser = useCurrentUser();
   const [features, setFeatures] = useState<BetaFeature[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -39,12 +41,14 @@ export default function FeaturesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold text-gray-900">Features</h1>
-        <button
-          onClick={() => setShowNew(true)}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
-        >
-          New Beta
-        </button>
+        {canWrite(currentUser) && (
+          <button
+            onClick={() => setShowNew(true)}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            New Beta
+          </button>
+        )}
       </div>
 
       <div className="flex flex-wrap gap-2">

@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { requireBirdeyeAuth } from "../middlewares/requireBirdeyeAuth";
+import { requireRole } from "../middlewares/requireRole";
 import healthRouter from "./health";
 import featuresRouter from "./features";
 import enrollmentsRouter from "./enrollments";
@@ -7,6 +8,7 @@ import clientsRouter from "./clients";
 import batchesRouter from "./batches";
 import reportsRouter from "./reports";
 import usersRouter from "./users";
+import meRouter from "./me";
 
 const router: IRouter = Router();
 
@@ -14,6 +16,7 @@ router.use(healthRouter);
 
 router.use(requireBirdeyeAuth);
 
+router.use("/me", meRouter);
 router.use("/features", featuresRouter);
 router.use("/enrollments", enrollmentsRouter);
 router.use("/clients", clientsRouter);
