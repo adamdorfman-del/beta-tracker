@@ -27,6 +27,7 @@ export default function StakeholdersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -91,7 +92,12 @@ export default function StakeholdersPage() {
     }
   };
 
-  const filtered = filterRole === "all" ? users : users.filter((u) => u.role === filterRole);
+  const filtered = users
+    .filter((u) => filterRole === "all" || u.role === filterRole)
+    .filter((u) => !search ||
+      u.name.toLowerCase().includes(search.toLowerCase()) ||
+      u.email.toLowerCase().includes(search.toLowerCase())
+    );
 
   return (
     <div className="space-y-6">
@@ -106,6 +112,13 @@ export default function StakeholdersPage() {
       </div>
 
       <div className="flex items-center gap-3">
+        <input
+          type="search"
+          placeholder="Search stakeholders…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 min-w-[200px]"
+        />
         <select
           value={filterRole}
           onChange={(e) => setFilterRole(e.target.value)}

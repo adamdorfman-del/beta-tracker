@@ -23,7 +23,9 @@ export default function ClientsPage() {
   const health  = params.get("health")  ?? "";
   const csmId   = params.get("csm")     ?? "";
   const segment = params.get("segment") ?? "";
+  const search  = params.get("search")  ?? "";
   const page = Math.max(1, parseInt(params.get("page") ?? "1", 10));
+  const [searchInput, setSearchInput] = useState(search);
   const take = 25;
 
   const [clients, setClients]         = useState<any[]>([]);
@@ -44,6 +46,7 @@ export default function ClientsPage() {
     if (health)  p.health  = health;
     if (csmId)   p.csm     = csmId;
     if (segment) p.segment = segment;
+    if (search)  p.search  = search;
     api.clients.list(p)
       .then((d) => { setClients(d.clients ?? []); setTotal(d.total ?? 0); })
       .catch(console.error)
@@ -54,7 +57,12 @@ export default function ClientsPage() {
     api.users.list().then((d) => setCsms((d.users ?? []).filter((u: any) => u.role === "csm" || u.role === "admin"))).catch(() => {});
   }, []);
 
-  useEffect(() => { load(); }, [health, csmId, segment, page]);
+  useEffect(() => { load(); }, [health, csmId, segment, search, page]);
+
+  useEffect(() => {
+    const t = setTimeout(() => navigate(buildLink({ search: searchInput || null, page: null })), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
     if (!expandId) { setExpandedClient(null); return; }
@@ -103,6 +111,13 @@ export default function ClientsPage() {
       </div>
 
       <div className="flex flex-wrap gap-3">
+        <input
+          type="search"
+          placeholder="Search clients…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white min-w-[200px]"
+        />
         <select className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white"
           value={health} onChange={(e) => navigate(buildLink({ health: e.target.value }))}>
           <option value="">All health</option>
@@ -120,8 +135,8 @@ export default function ClientsPage() {
           <option value="">All CSMs</option>
           {csms.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        {(health || segment || csmId) && (
-          <button onClick={() => navigate("/clients")} className="text-sm text-gray-400 hover:text-gray-600">
+        {(health || segment || csmId || search) && (
+          <button onClick={() => { setSearchInput(""); navigate("/clients"); }} className="text-sm text-gray-400 hover:text-gray-600">
             Clear filters
           </button>
         )}

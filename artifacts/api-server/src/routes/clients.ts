@@ -120,10 +120,12 @@ router.post("/bulk", async (req, res) => {
       const [client] = await db.insert(clientsTable).values(validated.data as any).returning();
       results.push({ row: i + 1, success: true, client });
     } catch (e: any) {
+      req.log.error({ row: i + 1, err: e }, "bulk import row failed");
       const pgCode = e?.cause?.code ?? e?.code;
       const error = pgCode === "23505"
         ? `Client ID "${raw.crmId}" already exists.`
-        : pgCode === "23503" ? "CSM not found." : "Database error.";
+        : pgCode === "23503" ? "CSM not found."
+        : e?.cause?.message ?? e?.message ?? "Database error.";
       results.push({ row: i + 1, success: false, error });
     }
   }
