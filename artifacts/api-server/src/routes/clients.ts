@@ -5,7 +5,7 @@ import { eq, and, desc, count, inArray, ilike } from "drizzle-orm";
 
 const router = Router();
 
-const VALID_SEGMENTS = ["Enterprise", "Commercial", "Midmarket", "Channel", "SMB"] as const;
+const VALID_SEGMENTS = ["Strategic", "Enterprise", "Commercial", "Professional", "Channel"] as const;
 const VALID_HEALTH   = ["green", "yellow", "red"] as const;
 
 function validateClientBody(body: any, requireAll = true) {

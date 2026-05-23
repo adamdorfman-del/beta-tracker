@@ -93,7 +93,9 @@ export function ClientImportModal({ onClose, onImported }: Props) {
       setResults(data.results ?? []);
       if (data.succeeded > 0) onImported();
     } catch (e: any) {
-      setParseError(e?.data?.error ?? "Import failed.");
+      const detail = e?.data?.error ?? e?.message ?? "";
+      const status = e?.status ? ` (HTTP ${e.status})` : "";
+      setParseError(`Import failed${status}${detail ? `: ${detail}` : "."}`);
     } finally {
       setImporting(false);
     }
