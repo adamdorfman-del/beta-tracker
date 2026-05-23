@@ -1,29 +1,41 @@
-import { useEffect, useState } from "react";
-import { Link, useSearch } from "wouter";
+import { useEffect, useRef, useState } from "react";
+import { useSearch } from "wouter";
 import { api } from "@/lib/api";
 import { BatchStatusBadge } from "@/components/StatusBadge";
 import { HealthDot } from "@/components/HealthDot";
 import type { OutreachBatch } from "@/lib/types";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
 export default function BatchesPage() {
-  const searchString = useSearch();
-  const page = Math.max(1, parseInt(new URLSearchParams(searchString).get("page") ?? "1", 10));
-  const take = 20;
-  const skip = (page - 1) * take;
-
   const [batches, setBatches] = useState<OutreachBatch[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const pageRef = useRef(1);
 
-  function load() {
-    setLoading(true);
-    api.batches.list({ page: String(page), limit: String(take) })
-      .then((d) => { setBatches(d.batches); setTotal(d.total); })
+  function loadPage(p: number) {
+    if (p === 1) setLoading(true); else setLoadingMore(true);
+    api.batches.list({ page: String(p), limit: "25" })
+      .then((d) => {
+        setBatches(prev => p === 1 ? d.batches : [...prev, ...d.batches]);
+        setTotal(d.total);
+      })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setLoadingMore(false); });
   }
 
-  useEffect(() => { load(); }, [page]);
+  function load() { pageRef.current = 1; setBatches([]); loadPage(1); }
+
+  useEffect(() => { load(); }, []);
+
+  function loadMore() {
+    if (loadingMore || batches.length >= total) return;
+    const next = pageRef.current + 1;
+    pageRef.current = next;
+    loadPage(next);
+  }
+
+  const sentinelRef = useInfiniteScroll(loadMore, !loading && batches.length < total);
 
   async function trigger() {
     try { await api.batches.trigger(); load(); }
@@ -119,15 +131,8 @@ export default function BatchesPage() {
         </div>
       )}
 
-      {total > take && (
-        <div className="flex items-center justify-between text-sm text-gray-600">
-          <span>Showing {skip + 1}–{Math.min(skip + take, total)} of {total}</span>
-          <div className="flex gap-2">
-            {page > 1 && <Link href={`/batches?page=${page - 1}`} className="rounded border px-3 py-1 hover:bg-gray-50">← Prev</Link>}
-            {skip + take < total && <Link href={`/batches?page=${page + 1}`} className="rounded border px-3 py-1 hover:bg-gray-50">Next →</Link>}
-          </div>
-        </div>
-      )}
+      <div ref={sentinelRef} className="h-1" />
+      {loadingMore && <div className="py-3 text-center text-sm text-gray-400">Loading more…</div>}
     </div>
   );
 }

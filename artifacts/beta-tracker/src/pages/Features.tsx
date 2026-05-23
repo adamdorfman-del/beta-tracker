@@ -1,41 +1,58 @@
-import { useEffect, useState } from "react";
-import { Link, useLocation, useSearch } from "wouter";
+import { useEffect, useRef, useState } from "react";
+import { Link, useSearch } from "wouter";
 import { api } from "@/lib/api";
 import { BetaStatusBadge } from "@/components/StatusBadge";
 import { SlotFill } from "@/components/SlotFill";
 import type { BetaFeature, BetaStatus } from "@/lib/types";
 import { NewFeatureModal } from "@/components/NewFeatureModal";
 import { useCurrentUser, canWrite } from "@/hooks/useCurrentUser";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
 const ALL_STATUSES: BetaStatus[] = ["draft", "recruiting", "outreach_sent", "full", "in_progress", "closing", "closed"];
+const TAKE = 25;
 
 export default function FeaturesPage() {
   const searchString = useSearch();
-  const params = new URLSearchParams(searchString);
-  const status = params.get("status") as BetaStatus | null;
-  const page = Math.max(1, parseInt(params.get("page") ?? "1", 10));
-  const take = 20;
+  const status = new URLSearchParams(searchString).get("status") as BetaStatus | null;
 
-  const [, navigate] = useLocation();
   const currentUser = useCurrentUser();
   const [features, setFeatures] = useState<BetaFeature[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
+  const pageRef = useRef(1);
 
-  function load() {
-    setLoading(true);
-    const p: Record<string, string> = { page: String(page), limit: String(take) };
-    if (status) p.status = status;
-    api.features.list(p)
-      .then((d) => { setFeatures(d.features); setTotal(d.total); })
+  function loadPage(p: number) {
+    if (p === 1) setLoading(true); else setLoadingMore(true);
+    const params: Record<string, string> = { page: String(p), limit: String(TAKE) };
+    if (status) params.status = status;
+    api.features.list(params)
+      .then((d) => {
+        setFeatures(prev => p === 1 ? d.features : [...prev, ...d.features]);
+        setTotal(d.total);
+      })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setLoadingMore(false); });
   }
 
-  useEffect(() => { load(); }, [status, page]);
+  useEffect(() => {
+    pageRef.current = 1;
+    setPage(1);
+    setFeatures([]);
+    loadPage(1);
+  }, [status]);
 
-  const skip = (page - 1) * take;
+  function loadMore() {
+    if (loadingMore || features.length >= total) return;
+    const next = pageRef.current + 1;
+    pageRef.current = next;
+    setPage(next);
+    loadPage(next);
+  }
+
+  const sentinelRef = useInfiniteScroll(loadMore, !loading && features.length < total);
 
   return (
     <div className="space-y-6">
@@ -52,22 +69,13 @@ export default function FeaturesPage() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Link
-          href="/features"
-          className={`rounded-full px-3 py-1 text-xs font-medium border ${
-            !status ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-          }`}
-        >
+        <Link href="/features"
+          className={`rounded-full px-3 py-1 text-xs font-medium border ${!status ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>
           All
         </Link>
         {ALL_STATUSES.map((s) => (
-          <Link
-            key={s}
-            href={`/features?status=${s}`}
-            className={`rounded-full px-3 py-1 text-xs font-medium border ${
-              status === s ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
-            }`}
-          >
+          <Link key={s} href={`/features?status=${s}`}
+            className={`rounded-full px-3 py-1 text-xs font-medium border ${status === s ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>
             {s.replace("_", " ")}
           </Link>
         ))}
@@ -76,6 +84,10 @@ export default function FeaturesPage() {
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
         {loading ? (
           <div className="py-12 text-center text-sm text-gray-400">Loading…</div>
+        ) : features.length === 0 ? (
+          <div className="py-12 text-center text-sm text-gray-400">
+            No features found.{status && " Try clearing the filter."}
+          </div>
         ) : (
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -94,7 +106,6 @@ export default function FeaturesPage() {
                 const durationDays = f.closedAt
                   ? Math.round((new Date(f.closedAt).getTime() - new Date(f.startDate).getTime()) / 86400000)
                   : Math.round((Date.now() - new Date(f.startDate).getTime()) / 86400000);
-
                 return (
                   <tr key={f.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
@@ -103,19 +114,11 @@ export default function FeaturesPage() {
                         <p className="text-xs text-gray-400">{durationDays}d elapsed</p>
                       </Link>
                     </td>
-                    <td className="px-4 py-3 hidden sm:table-cell">
-                      <BetaStatusBadge status={f.status} />
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <SlotFill confirmed={confirmed} target={f.targetTesterCount} />
-                    </td>
-                    <td className="px-4 py-3 hidden xl:table-cell">
-                      <span className="text-sm text-gray-600">{f.ownerPm?.name ?? "—"}</span>
-                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell"><BetaStatusBadge status={f.status} /></td>
+                    <td className="px-4 py-3 hidden md:table-cell"><SlotFill confirmed={confirmed} target={f.targetTesterCount} /></td>
+                    <td className="px-4 py-3 hidden xl:table-cell"><span className="text-sm text-gray-600">{f.ownerPm?.name ?? "—"}</span></td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/features/${f.id}`} className="text-xs font-medium text-blue-600 hover:text-blue-800">
-                        View →
-                      </Link>
+                      <Link href={`/features/${f.id}`} className="text-xs font-medium text-blue-600 hover:text-blue-800">View →</Link>
                     </td>
                   </tr>
                 );
@@ -123,30 +126,12 @@ export default function FeaturesPage() {
             </tbody>
           </table>
         )}
-        {!loading && features.length === 0 && (
-          <div className="py-12 text-center text-sm text-gray-400">
-            No features found.{status && " Try clearing the filter."}
-          </div>
-        )}
       </div>
 
-      {total > take && (
-        <div className="flex items-center justify-between text-sm text-gray-600">
-          <span>Showing {skip + 1}–{Math.min(skip + take, total)} of {total}</span>
-          <div className="flex gap-2">
-            {page > 1 && (
-              <Link href={`/features?page=${page - 1}${status ? `&status=${status}` : ""}`}
-                className="rounded border px-3 py-1 hover:bg-gray-50">← Prev</Link>
-            )}
-            {skip + take < total && (
-              <Link href={`/features?page=${page + 1}${status ? `&status=${status}` : ""}`}
-                className="rounded border px-3 py-1 hover:bg-gray-50">Next →</Link>
-            )}
-          </div>
-        </div>
-      )}
+      <div ref={sentinelRef} className="h-1" />
+      {loadingMore && <div className="py-3 text-center text-sm text-gray-400">Loading more…</div>}
 
-      {showNew && <NewFeatureModal onClose={() => setShowNew(false)} onCreated={load} />}
+      {showNew && <NewFeatureModal onClose={() => setShowNew(false)} onCreated={() => { pageRef.current = 1; setPage(1); setFeatures([]); loadPage(1); }} />}
     </div>
   );
 }

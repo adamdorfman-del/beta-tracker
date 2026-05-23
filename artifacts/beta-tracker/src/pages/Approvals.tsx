@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
-import { Link, useSearch } from "wouter";
+import { useEffect, useRef, useState } from "react";
+import { Link } from "wouter";
 import { api } from "@/lib/api";
 import { HealthDot } from "@/components/HealthDot";
 import type { BetaEnrollment } from "@/lib/types";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
 function ApproveRejectButtons({ enrollmentId, onDone }: { enrollmentId: string; onDone: () => void }) {
   const [showReject, setShowReject] = useState(false);
@@ -54,24 +55,35 @@ function ApproveRejectButtons({ enrollmentId, onDone }: { enrollmentId: string; 
 }
 
 export default function ApprovalsPage() {
-  const searchString = useSearch();
-  const page = Math.max(1, parseInt(new URLSearchParams(searchString).get("page") ?? "1", 10));
-  const take = 30;
-  const skip = (page - 1) * take;
-
   const [enrollments, setEnrollments] = useState<BetaEnrollment[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const pageRef = useRef(1);
 
-  function load() {
-    setLoading(true);
-    api.enrollments.list({ approvalStatus: "pending", page: String(page), limit: String(take) })
-      .then((d) => { setEnrollments(d.enrollments); setTotal(d.total); })
+  function loadPage(p: number) {
+    if (p === 1) setLoading(true); else setLoadingMore(true);
+    api.enrollments.list({ approvalStatus: "pending", page: String(p), limit: "25" })
+      .then((d) => {
+        setEnrollments(prev => p === 1 ? d.enrollments : [...prev, ...d.enrollments]);
+        setTotal(d.total);
+      })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setLoadingMore(false); });
   }
 
-  useEffect(() => { load(); }, [page]);
+  function load() { pageRef.current = 1; setEnrollments([]); loadPage(1); }
+
+  useEffect(() => { load(); }, []);
+
+  function loadMore() {
+    if (loadingMore || enrollments.length >= total) return;
+    const next = pageRef.current + 1;
+    pageRef.current = next;
+    loadPage(next);
+  }
+
+  const sentinelRef = useInfiniteScroll(loadMore, !loading && enrollments.length < total);
 
   const staleThreshold = Date.now() - 48 * 3600000;
 
@@ -132,15 +144,8 @@ export default function ApprovalsPage() {
         </div>
       )}
 
-      {total > take && (
-        <div className="flex items-center justify-between text-sm text-gray-600">
-          <span>Showing {skip + 1}–{Math.min(skip + take, total)} of {total}</span>
-          <div className="flex gap-2">
-            {page > 1 && <Link href={`/approvals?page=${page - 1}`} className="rounded border px-3 py-1 hover:bg-gray-50">← Prev</Link>}
-            {skip + take < total && <Link href={`/approvals?page=${page + 1}`} className="rounded border px-3 py-1 hover:bg-gray-50">Next →</Link>}
-          </div>
-        </div>
-      )}
+      <div ref={sentinelRef} className="h-1" />
+      {loadingMore && <div className="py-3 text-center text-sm text-gray-400">Loading more…</div>}
     </div>
   );
 }

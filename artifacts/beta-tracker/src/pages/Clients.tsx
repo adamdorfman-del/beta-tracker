@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useSearch, useLocation } from "wouter";
 import { api } from "@/lib/api";
 import { HealthDot } from "@/components/HealthDot";
 import { BetaStatusBadge } from "@/components/StatusBadge";
 import { ClientModal } from "@/components/ClientModal";
 import { ClientImportModal } from "@/components/ClientImportModal";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
 const SEGMENTS = ["Strategic", "Enterprise", "Commercial", "Professional", "Channel"];
 
@@ -24,14 +25,15 @@ export default function ClientsPage() {
   const csmId   = params.get("csm")     ?? "";
   const segment = params.get("segment") ?? "";
   const search  = params.get("search")  ?? "";
-  const page = Math.max(1, parseInt(params.get("page") ?? "1", 10));
   const [searchInput, setSearchInput] = useState(search);
+  const pageRef = useRef(1);
   const take = 25;
 
   const [clients, setClients]         = useState<any[]>([]);
   const [total, setTotal]             = useState(0);
   const [csms, setCsms]               = useState<any[]>([]);
   const [loading, setLoading]         = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [expandId, setExpandId]       = useState<string | null>(null);
   const [expandedClient, setExpandedClient] = useState<any>(null);
   const [showAdd, setShowAdd]         = useState(false);
@@ -40,40 +42,53 @@ export default function ClientsPage() {
   const [deleting, setDeleting]       = useState(false);
   const [showImport, setShowImport]   = useState(false);
 
-  function load() {
-    setLoading(true);
-    const p: Record<string, string> = { page: String(page), limit: String(take) };
-    if (health)  p.health  = health;
-    if (csmId)   p.csm     = csmId;
-    if (segment) p.segment = segment;
-    if (search)  p.search  = search;
-    api.clients.list(p)
-      .then((d) => { setClients(d.clients ?? []); setTotal(d.total ?? 0); })
+  function loadPage(p: number) {
+    if (p === 1) setLoading(true); else setLoadingMore(true);
+    const q: Record<string, string> = { page: String(p), limit: "25" };
+    if (health)  q.health  = health;
+    if (csmId)   q.csm     = csmId;
+    if (segment) q.segment = segment;
+    if (search)  q.search  = search;
+    api.clients.list(q)
+      .then((d) => {
+        setClients(prev => p === 1 ? (d.clients ?? []) : [...prev, ...(d.clients ?? [])]);
+        setTotal(d.total ?? 0);
+      })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setLoadingMore(false); });
   }
 
   useEffect(() => {
     api.users.list().then((d) => setCsms((d.users ?? []).filter((u: any) => u.role === "csm" || u.role === "admin"))).catch(() => {});
   }, []);
 
-  useEffect(() => { load(); }, [health, csmId, segment, search, page]);
+  useEffect(() => {
+    pageRef.current = 1;
+    setClients([]);
+    loadPage(1);
+  }, [health, csmId, segment, search]);
 
   useEffect(() => {
-    const t = setTimeout(() => navigate(buildLink({ search: searchInput || null, page: null })), 300);
+    const t = setTimeout(() => navigate(buildLink({ search: searchInput || null })), 300);
     return () => clearTimeout(t);
   }, [searchInput]);
+
+  function loadMore() {
+    if (loadingMore || clients.length >= total) return;
+    const next = pageRef.current + 1;
+    pageRef.current = next;
+    loadPage(next);
+  }
+
+  const sentinelRef = useInfiniteScroll(loadMore, !loading && clients.length < total);
 
   useEffect(() => {
     if (!expandId) { setExpandedClient(null); return; }
     api.clients.get(expandId).then(setExpandedClient).catch(() => {});
   }, [expandId]);
 
-  const skip = (page - 1) * take;
-
   function buildLink(updates: Record<string, string | null>) {
     const p = new URLSearchParams(searchString);
-    p.delete("page");
     for (const [k, v] of Object.entries(updates)) {
       if (v) p.set(k, v); else p.delete(k);
     }
@@ -86,7 +101,9 @@ export default function ClientsPage() {
     try {
       await api.clients.remove(deleteTarget.id);
       setDeleteTarget(null);
-      load();
+      pageRef.current = 1;
+      setClients([]);
+      loadPage(1);
     } catch (e: any) {
       alert(e?.data?.error ?? "Could not delete client.");
     } finally {
@@ -244,28 +261,20 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {total > take && (
-        <div className="flex items-center justify-between text-sm text-gray-600">
-          <span>Showing {skip + 1}–{Math.min(skip + take, total)} of {total}</span>
-          <div className="flex gap-2">
-            {page > 1 && <Link href={buildLink({ page: String(page - 1) })} className="rounded border px-3 py-1 hover:bg-gray-50">← Prev</Link>}
-            {skip + take < total && <Link href={buildLink({ page: String(page + 1) })} className="rounded border px-3 py-1 hover:bg-gray-50">Next →</Link>}
-          </div>
-        </div>
-      )}
-
+      <div ref={sentinelRef} className="h-1" />
+      {loadingMore && <div className="py-3 text-center text-sm text-gray-400">Loading more…</div>}
       {(showAdd || editTarget) && (
         <ClientModal
           client={editTarget ?? undefined}
           onClose={() => { setShowAdd(false); setEditTarget(null); }}
-          onSaved={load}
+          onSaved={() => { pageRef.current = 1; setClients([]); loadPage(1); }}
         />
       )}
 
       {showImport && (
         <ClientImportModal
           onClose={() => setShowImport(false)}
-          onImported={load}
+          onImported={() => { pageRef.current = 1; setClients([]); loadPage(1); }}
         />
       )}
 

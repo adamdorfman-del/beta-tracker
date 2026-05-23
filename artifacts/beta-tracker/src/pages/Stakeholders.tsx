@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { RoleBadge } from "@/components/RoleBadge";
 import { useCurrentUser, canWrite } from "@/hooks/useCurrentUser";
+import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
 type Role = "pm" | "pmm" | "csm" | "admin";
 
@@ -29,6 +30,8 @@ export default function StakeholdersPage() {
   const [loading, setLoading] = useState(true);
   const [filterRole, setFilterRole] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [displayCount, setDisplayCount] = useState(25);
+  useEffect(() => { setDisplayCount(25); }, [search, filterRole]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -99,6 +102,11 @@ export default function StakeholdersPage() {
       u.name.toLowerCase().includes(search.toLowerCase()) ||
       u.email.toLowerCase().includes(search.toLowerCase())
     );
+  const visible = filtered.slice(0, displayCount);
+  const sentinelRef = useInfiniteScroll(
+    () => setDisplayCount(c => c + 25),
+    displayCount < filtered.length
+  );
 
   return (
     <div className="space-y-6">
@@ -153,7 +161,7 @@ export default function StakeholdersPage() {
                 <tr>
                   <td colSpan={4} className="py-12 text-center text-sm text-gray-400">No stakeholders found.</td>
                 </tr>
-              ) : filtered.map((u) => (
+              ) : visible.map((u) => (
                 <tr key={u.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -197,6 +205,7 @@ export default function StakeholdersPage() {
           </table>
         </div>
       )}
+      <div ref={sentinelRef} className="h-1" />
 
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
