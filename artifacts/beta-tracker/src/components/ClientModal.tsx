@@ -98,12 +98,12 @@ export function ClientModal({ client, onClose, onSaved }: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelCls}>Primary Contact Name <span className="text-red-500">*</span></label>
-              <input value={form.primaryContactName} onChange={(e) => set("primaryContactName", e.target.value)} required className={inputCls} />
+              <label className={labelCls}>Primary Contact Name</label>
+              <input value={form.primaryContactName} onChange={(e) => set("primaryContactName", e.target.value)} className={inputCls} />
             </div>
             <div>
-              <label className={labelCls}>Primary Contact Email <span className="text-red-500">*</span></label>
-              <input type="email" value={form.primaryContactEmail} onChange={(e) => set("primaryContactEmail", e.target.value)} required className={inputCls} />
+              <label className={labelCls}>Primary Contact Email</label>
+              <input type="email" value={form.primaryContactEmail} onChange={(e) => set("primaryContactEmail", e.target.value)} className={inputCls} />
             </div>
           </div>
 

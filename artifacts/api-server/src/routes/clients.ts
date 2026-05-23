@@ -16,8 +16,6 @@ function validateClientBody(body: any, requireAll = true) {
     if (!crmId?.trim())              return { error: "Client ID is required." };
     if (!csmOwnerId?.trim())         return { error: "CSM Owner is required." };
     if (!segment || !VALID_SEGMENTS.includes(segment)) return { error: `Segment must be one of: ${VALID_SEGMENTS.join(", ")}.` };
-    if (!primaryContactName?.trim()) return { error: "Primary Contact Name is required." };
-    if (!primaryContactEmail?.trim()) return { error: "Primary Contact Email is required." };
   }
   if (accountHealth && !VALID_HEALTH.includes(accountHealth)) return { error: "Invalid account health value." };
   return {

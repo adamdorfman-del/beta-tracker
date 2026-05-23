@@ -118,7 +118,7 @@ export function ClientImportModal({ onClose, onImported }: Props) {
               <div className="rounded-lg bg-blue-50 border border-blue-100 px-4 py-3 text-sm text-blue-800 space-y-1">
                 <p className="font-medium">Expected columns (in any order):</p>
                 <p className="text-xs text-blue-700">
-                  <strong>Required:</strong> Client Name, Client ID, Primary Contact Name, Primary Contact Email, Segment, CSM Email
+                  <strong>Required:</strong> Client Name, Client ID, Segment, CSM Email
                 </p>
                 <p className="text-xs text-blue-700">
                   <strong>Optional:</strong> Account Health, Vertical, Contract Renewal Date, Product Subscriptions, Last Outreach Date
