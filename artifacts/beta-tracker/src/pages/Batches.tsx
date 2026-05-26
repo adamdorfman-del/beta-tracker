@@ -70,34 +70,88 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
-// ─── Draft modal ─────────────────────────────────────────────────────────────
+// ─── Detail panel ─────────────────────────────────────────────────────────────
 
-function DraftModal({
+function DetailPanel({
   batch,
   feature,
-  sender,
-  onClose,
+  users,
+  userLabelMap,
+  patchedSenderId,
+  patchedCcIds,
+  draft,
+  onSenderChange,
+  onCcChange,
   onDraftSaved,
+  onSend,
+  onClose,
 }: {
   batch: OutreachBatch;
   feature: BatchFeature;
-  sender: User | null;
-  onClose: () => void;
+  users: User[];
+  userLabelMap: Record<string, string>;
+  patchedSenderId: string | null;
+  patchedCcIds: string[];
+  draft: string;
+  onSenderChange: (id: string | null) => void;
+  onCcChange: (ids: string[]) => void;
   onDraftSaved: (text: string) => void;
+  onSend: () => void;
+  onClose: () => void;
 }) {
-  const [draft, setDraft] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const reminder = isReminderSuggested(batch);
+  const stale = isStale(batch);
+  const showBanner = reminder || stale;
+
+  const daysSinceSent = daysSince(batch.sentAt);
+  const daysSinceOutreach = daysSince(batch.client?.lastOutreachDate);
+
+  const featureEnrollments = (batch.enrollments ?? []).filter(
+    (be) => be.enrollment?.feature?.id === feature.id,
+  );
+
+  // Build assigned-team / others groups for From + CC
+  const assignedUsers: User[] = [];
+  const assignedIds = new Set<string>();
+  function addAssigned(u: User | null | undefined) {
+    if (u && !assignedIds.has(u.id)) { assignedIds.add(u.id); assignedUsers.push(u); }
+  }
+  addAssigned(feature.ownerPm);
+  addAssigned(feature.ownerPmm);
+  addAssigned(batch.client?.csmOwner);
+  addAssigned(batch.client?.aeOwner);
+
+  const otherUsers = users
+    .filter((u) => !assignedIds.has(u.id))
+    .sort((a, b) => {
+      const lastA = a.name.split(" ").pop() ?? a.name;
+      const lastB = b.name.split(" ").pop() ?? b.name;
+      return lastA.localeCompare(lastB);
+    });
+
+  const fromAssigned = assignedUsers;
+  const fromOthers = otherUsers;
+
+  const ccAssigned = assignedUsers.filter((u) => u.id !== patchedSenderId);
+  const ccOthers = otherUsers.filter((u) => u.id !== patchedSenderId);
+  const ccGroups = [
+    ...(ccAssigned.length > 0 ? [{ label: "Assigned team", options: ccAssigned.map((u) => u.id) }] : []),
+    ...(ccOthers.length > 0 ? [{ label: "Others", options: ccOthers.map((u) => u.id) }] : []),
+  ];
 
   async function generate() {
     const key = import.meta.env.VITE_GEMINI_API_KEY;
     if (!key) {
-      setError("VITE_GEMINI_API_KEY is not set. Add it to .env and restart the dev server.");
+      setDraftError("VITE_GEMINI_API_KEY is not set. Add it to .env and restart the dev server.");
       return;
     }
     setGenerating(true);
-    setError(null);
+    setDraftError(null);
+    const sender = users.find((u) => u.id === patchedSenderId) ?? null;
     try {
       const role = sender?.role ?? "pm";
       const toneNote =
@@ -143,14 +197,11 @@ Format:
         },
       );
       const data = await resp.json();
-      if (!resp.ok) {
-        throw new Error(data.error?.message ?? `Gemini error ${resp.status}`);
-      }
+      if (!resp.ok) throw new Error(data.error?.message ?? `Gemini error ${resp.status}`);
       const text: string = data.candidates[0].content.parts[0].text ?? "";
-      setDraft(text);
       onDraftSaved(text);
     } catch (e: any) {
-      setError(e.message ?? "Failed to generate draft. Check your Gemini API key.");
+      setDraftError(e.message ?? "Failed to generate draft.");
     } finally {
       setGenerating(false);
     }
@@ -162,162 +213,42 @@ Format:
     setTimeout(() => setCopied(false), 2000);
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex w-full max-w-2xl flex-col rounded-xl bg-white shadow-xl" style={{ maxHeight: "90vh" }}>
-        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900">AI Draft Email</h2>
-            <p className="text-xs text-gray-500">
-              {feature.name} → {batch.client?.name}
-              {sender && <> · Sender: {sender.name}</>}
-            </p>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <svg className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
-            </div>
-          )}
-          {!draft ? (
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
-              <p className="font-medium text-gray-700 mb-2">Ready to generate</p>
-              <dl className="space-y-1 text-gray-500">
-                <div className="flex gap-2"><dt className="w-20 shrink-0">Feature</dt><dd className="font-medium text-gray-700">{feature.name}</dd></div>
-                <div className="flex gap-2"><dt className="w-20 shrink-0">Client</dt><dd className="font-medium text-gray-700">{batch.client?.name}</dd></div>
-                <div className="flex gap-2"><dt className="w-20 shrink-0">Sender</dt><dd className="font-medium text-gray-700">{sender ? `${sender.name} (${sender.role.toUpperCase()})` : "None selected"}</dd></div>
-              </dl>
-            </div>
-          ) : (
-            <textarea
-              className="h-72 w-full rounded-lg border border-gray-200 p-3 font-mono text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              value={draft}
-              onChange={(e) => { setDraft(e.target.value); onDraftSaved(e.target.value); }}
-            />
-          )}
-        </div>
-        <div className="flex items-center justify-between border-t border-gray-200 px-6 py-4">
-          <button onClick={onClose} className="text-sm text-gray-500 hover:text-gray-700">Close</button>
-          <div className="flex gap-3">
-            {draft && (
-              <button onClick={copy} className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                {copied ? "Copied!" : "Copy"}
-              </button>
-            )}
-            <button
-              onClick={generate}
-              disabled={generating}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {generating ? "Generating…" : draft ? "Regenerate" : "Generate Draft"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Detail panel ─────────────────────────────────────────────────────────────
-
-function DetailPanel({
-  batch,
-  feature,
-  users,
-  userLabelMap,
-  patchedSenderId,
-  patchedCcIds,
-  draft,
-  onSenderChange,
-  onCcChange,
-  onOpenDraft,
-  onSend,
-  onClose,
-}: {
-  batch: OutreachBatch;
-  feature: BatchFeature;
-  users: User[];
-  userLabelMap: Record<string, string>;
-  patchedSenderId: string | null;
-  patchedCcIds: string[];
-  draft: string;
-  onSenderChange: (id: string | null) => void;
-  onCcChange: (ids: string[]) => void;
-  onOpenDraft: () => void;
-  onSend: () => void;
-  onClose: () => void;
-}) {
-  const reminder = isReminderSuggested(batch);
-  const stale = isStale(batch);
-  const showBanner = reminder || stale;
-
-  const daysSinceSent = daysSince(batch.sentAt);
-  const daysSinceOutreach = daysSince(batch.client?.lastOutreachDate);
-
-  const featureEnrollments = (batch.enrollments ?? []).filter(
-    (be) => be.enrollment?.feature?.id === feature.id,
-  );
-
-  // Build assigned-team / others groups for From + CC
-  const assignedUsers: User[] = [];
-  const assignedIds = new Set<string>();
-  function addAssigned(u: User | null | undefined) {
-    if (u && !assignedIds.has(u.id)) { assignedIds.add(u.id); assignedUsers.push(u); }
-  }
-  addAssigned(feature.ownerPm);
-  addAssigned(feature.ownerPmm);
-  addAssigned(batch.client?.csmOwner);
-  addAssigned(batch.client?.aeOwner);
-
-  const otherUsers = users
-    .filter((u) => !assignedIds.has(u.id))
-    .sort((a, b) => {
-      const lastA = a.name.split(" ").pop() ?? a.name;
-      const lastB = b.name.split(" ").pop() ?? b.name;
-      return lastA.localeCompare(lastB);
-    });
-
-  // From dropdown groups (exclude current sender from Others only if they're already in Assigned)
-  const fromAssigned = assignedUsers;
-  const fromOthers = otherUsers;
-
-  // CC groups — exclude whoever is selected as sender
-  const ccAssigned = assignedUsers.filter((u) => u.id !== patchedSenderId);
-  const ccOthers = otherUsers.filter((u) => u.id !== patchedSenderId);
-  const ccGroups = [
-    ...(ccAssigned.length > 0 ? [{ label: "Assigned team", options: ccAssigned.map((u) => u.id) }] : []),
-    ...(ccOthers.length > 0 ? [{ label: "Others", options: ccOthers.map((u) => u.id) }] : []),
-  ];
-
   function openGmail() {
     const subject =
       draft.match(/^Subject: (.+)$/m)?.[1] ?? `${feature.name} Beta Program`;
-    const body = draft
-      ? draft.replace(/^Subject: .+\r?\n\r?\n?/, "")
-      : "";
+    const body = draft ? draft.replace(/^Subject: .+\r?\n\r?\n?/, "") : "";
     const to = batch.client?.primaryContactEmail ?? "";
     const url = new URL("https://mail.google.com/mail/u/0/");
     url.searchParams.set("view", "cm");
     url.searchParams.set("fs", "1");
     if (to) url.searchParams.set("to", to);
     url.searchParams.set("su", subject);
-    if (body) url.searchParams.set("body", body.slice(0, 1800)); // Gmail URL limit
+    if (body) url.searchParams.set("body", body.slice(0, 1800));
     window.open(url.toString(), "_blank");
   }
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
-      {/* Close button */}
-      <div className="flex justify-end px-3 pt-2.5">
+      {/* Header row: client name + close */}
+      <div className="flex items-start justify-between gap-4 px-5 pt-4 pb-3 border-b border-gray-100">
+        <div>
+          {showBanner && (
+            <div className="mb-2 inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
+              {reminder
+                ? `Last contacted ${daysSinceSent}d ago — reminder suggested`
+                : `Pending ${Math.floor((Date.now() - new Date(batch.createdAt).getTime()) / 3_600_000)}h — action needed`}
+            </div>
+          )}
+          <p className="text-base font-semibold text-gray-900 leading-snug">
+            {batch.client?.name ?? "—"}
+          </p>
+          <p className="mt-0.5 text-xs text-gray-400">
+            {batch.client?.segment ?? "—"} · {feature.name}
+          </p>
+        </div>
         <button
           onClick={onClose}
-          className="rounded p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          className="mt-0.5 shrink-0 rounded p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
           aria-label="Close panel"
         >
           <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
@@ -326,116 +257,155 @@ function DetailPanel({
         </button>
       </div>
 
-      {showBanner && (
-        <div className="bg-amber-50 border-b border-amber-100 px-4 py-2.5 text-xs font-medium text-amber-700">
-          {reminder
-            ? `Last contacted ${daysSinceSent}d ago — reminder suggested`
-            : `Batch pending ${Math.floor((Date.now() - new Date(batch.createdAt).getTime()) / 3_600_000)}h — action needed`}
-        </div>
-      )}
-
-      <div className="p-4 space-y-4">
-        {/* Client info */}
-        <div>
-          <p className="text-[15px] font-medium text-gray-900 leading-snug">
-            {batch.client?.name ?? "—"}
-          </p>
-          <p className="mt-0.5 text-xs text-gray-400">
-            {batch.client?.segment ?? "—"} · {feature.name}
-          </p>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg bg-gray-50 px-3 py-2.5 text-center">
-            <p className="text-xl font-semibold text-gray-900">{featureEnrollments.length}</p>
-            <p className="text-[11px] text-gray-400">Enrollments</p>
+      {/* 2-column body */}
+      <div className="flex gap-0 divide-x divide-gray-100">
+        {/* Left column: controls */}
+        <div className="w-64 shrink-0 p-4 space-y-4">
+          {/* Stats */}
+          <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-lg bg-gray-50 px-3 py-2.5 text-center">
+              <p className="text-xl font-semibold text-gray-900">{featureEnrollments.length}</p>
+              <p className="text-[11px] text-gray-400">Enrollments</p>
+            </div>
+            <div className="rounded-lg bg-gray-50 px-3 py-2.5 text-center">
+              <p className="text-xl font-semibold text-gray-900">
+                {daysSinceOutreach !== null ? `${daysSinceOutreach}d` : "—"}
+              </p>
+              <p className="text-[11px] text-gray-400">Since outreach</p>
+            </div>
           </div>
-          <div className="rounded-lg bg-gray-50 px-3 py-2.5 text-center">
-            <p className="text-xl font-semibold text-gray-900">
-              {daysSinceOutreach !== null ? `${daysSinceOutreach}d` : "—"}
-            </p>
-            <p className="text-[11px] text-gray-400">Since last outreach</p>
-          </div>
-        </div>
 
-        {/* From */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">From</label>
-          <select
-            value={patchedSenderId ?? ""}
-            onChange={(e) => onSenderChange(e.target.value || null)}
-            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
-          >
-            <option value="">— select sender —</option>
-            {fromAssigned.length > 0 && (
-              <optgroup label="Assigned team">
-                {fromAssigned.map((u) => (
-                  <option key={u.id} value={u.id}>{userLabelMap[u.id] ?? u.name}</option>
-                ))}
-              </optgroup>
-            )}
-            {fromOthers.length > 0 && (
-              <optgroup label="Others">
-                {fromOthers.map((u) => (
-                  <option key={u.id} value={u.id}>{userLabelMap[u.id] ?? u.name}</option>
-                ))}
-              </optgroup>
-            )}
-          </select>
-        </div>
-
-        {/* CC */}
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">CC</label>
-          <MultiSelect
-            label="Add CC"
-            groups={ccGroups}
-            selected={patchedCcIds}
-            onChange={onCcChange}
-            labelMap={userLabelMap}
-            className="w-full"
-          />
-        </div>
-
-        <hr className="border-gray-100" />
-
-        {/* Actions */}
-        <div className="space-y-2">
-          <button
-            onClick={onOpenDraft}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-purple-200 bg-white px-4 py-2.5 text-sm font-medium text-purple-700 hover:bg-purple-50 transition-colors"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-            </svg>
-            Generate draft email
-          </button>
-          <button
-            onClick={openGmail}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-4 py-2.5 text-sm font-medium text-blue-700 hover:bg-blue-50 transition-colors"
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 010 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" />
-            </svg>
-            Open in Gmail
-          </button>
-          {batch.batchStatus !== "sent" && (
-            <button
-              onClick={onSend}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+          {/* From */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">From</label>
+            <select
+              value={patchedSenderId ?? ""}
+              onChange={(e) => onSenderChange(e.target.value || null)}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
             >
-              Mark as sent
+              <option value="">— select sender —</option>
+              {fromAssigned.length > 0 && (
+                <optgroup label="Assigned team">
+                  {fromAssigned.map((u) => (
+                    <option key={u.id} value={u.id}>{userLabelMap[u.id] ?? u.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {fromOthers.length > 0 && (
+                <optgroup label="Others">
+                  {fromOthers.map((u) => (
+                    <option key={u.id} value={u.id}>{userLabelMap[u.id] ?? u.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+          </div>
+
+          {/* CC */}
+          <div className="space-y-1">
+            <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">CC</label>
+            <MultiSelect
+              label="Add CC"
+              groups={ccGroups}
+              selected={patchedCcIds}
+              onChange={onCcChange}
+              labelMap={userLabelMap}
+              className="w-full"
+            />
+          </div>
+
+          <hr className="border-gray-100" />
+
+          {/* Gmail + Mark as sent */}
+          <div className="space-y-2">
+            <button
+              onClick={openGmail}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 transition-colors"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M24 5.457v13.909c0 .904-.732 1.636-1.636 1.636h-3.819V11.73L12 16.64l-6.545-4.91v9.273H1.636A1.636 1.636 0 010 19.366V5.457c0-2.023 2.309-3.178 3.927-1.964L5.455 4.64 12 9.548l6.545-4.91 1.528-1.145C21.69 2.28 24 3.434 24 5.457z" />
+              </svg>
+              Open in Gmail
             </button>
+            {batch.batchStatus !== "sent" && (
+              <button
+                onClick={onSend}
+                className="w-full rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                Mark as sent
+              </button>
+            )}
+          </div>
+
+          {batch.sentAt && (
+            <p className="text-center text-xs text-gray-400">
+              Sent {new Date(batch.sentAt).toLocaleDateString()}
+              {batch.sentBy ? ` by ${batch.sentBy.name}` : ""}
+            </p>
           )}
         </div>
 
-        {batch.sentAt && (
-          <p className="text-center text-xs text-gray-400">
-            Sent {new Date(batch.sentAt).toLocaleDateString()}
-            {batch.sentBy ? ` by ${batch.sentBy.name}` : ""}
-          </p>
-        )}
+        {/* Right column: draft area */}
+        <div className="flex-1 min-w-0 p-4 flex flex-col gap-3">
+          {/* Error */}
+          {draftError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {draftError}
+            </div>
+          )}
+
+          {/* No draft yet */}
+          {!draft && !generating && (
+            <div className="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 py-10">
+              <p className="text-sm text-gray-400">No draft yet</p>
+              <button
+                onClick={generate}
+                className="flex items-center gap-2 rounded-lg border border-purple-200 bg-white px-4 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50 transition-colors"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+                Generate draft email
+              </button>
+            </div>
+          )}
+
+          {/* Generating spinner */}
+          {generating && (
+            <div className="flex flex-1 items-center justify-center gap-2 py-10 text-sm text-gray-400">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-gray-200 border-t-purple-500" />
+              Generating draft…
+            </div>
+          )}
+
+          {/* Draft textarea */}
+          {draft && !generating && (
+            <div className="flex flex-1 flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wide text-gray-400">Draft</span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={copy}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    {copied ? "Copied!" : "Copy"}
+                  </button>
+                  <button
+                    onClick={generate}
+                    className="text-xs text-purple-600 hover:text-purple-700"
+                  >
+                    Regenerate
+                  </button>
+                </div>
+              </div>
+              <textarea
+                className="flex-1 min-h-[240px] w-full rounded-lg border border-gray-200 p-3 font-mono text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                value={draft}
+                onChange={(e) => onDraftSaved(e.target.value)}
+              />
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -453,7 +423,6 @@ export default function BatchesPage() {
   const [collapsedFeatures, setCollapsedFeatures] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<SelectedInfo | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [draftInfo, setDraftInfo] = useState<{ batch: OutreachBatch; feature: BatchFeature } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const collapsedInitialized = useRef(false);
 
@@ -469,7 +438,7 @@ export default function BatchesPage() {
       setBatches(batchData.batches ?? []);
       setUsers(userData.users ?? []);
       setPatches({});
-      collapsedInitialized.current = false; // allow re-init on reload
+      collapsedInitialized.current = false;
     } catch (e) {
       console.error(e);
     } finally {
@@ -484,7 +453,6 @@ export default function BatchesPage() {
     [users],
   );
 
-  // Group batches by feature
   const featureGroups = useMemo(() => {
     const map = new Map<string, { feature: BatchFeature; batches: OutreachBatch[] }>();
     for (const batch of batches) {
@@ -502,7 +470,6 @@ export default function BatchesPage() {
     );
   }, [batches]);
 
-  // Auto-collapse feature groups where every batch is sent
   useEffect(() => {
     if (collapsedInitialized.current || featureGroups.length === 0) return;
     collapsedInitialized.current = true;
@@ -600,7 +567,6 @@ export default function BatchesPage() {
     });
   }
 
-  // Resolve selected batch + feature for detail panel
   const selectedBatch = selected ? batches.find((b) => b.id === selected.batchId) ?? null : null;
   const selectedFeature = selected
     ? featureGroups.find(([fid]) => fid === selected.featureId)?.[1].feature ?? null
@@ -641,14 +607,13 @@ export default function BatchesPage() {
           </p>
         </div>
       ) : (
-        <div className="flex items-start gap-6 max-w-[80%]">
-          {/* ── Left: batch list ── */}
-          <div className="min-w-0 flex-1 space-y-6">
+        <div className="flex items-start gap-6">
+          {/* ── Left: batch list (fixed width) ── */}
+          <div className="w-[360px] shrink-0 space-y-6">
             {featureGroups.map(([featureId, { feature, batches: fBatches }]) => {
               const collapsed = collapsedFeatures.has(featureId);
               return (
                 <div key={featureId}>
-                  {/* Feature group header */}
                   <div className="mb-2 flex items-center justify-between gap-2 border-b border-gray-100 pb-2">
                     <div className="flex min-w-0 items-center gap-2">
                       <button
@@ -678,7 +643,6 @@ export default function BatchesPage() {
                     </div>
                   </div>
 
-                  {/* Batch cards */}
                   {!collapsed && (
                     <div className="space-y-1.5 pl-5">
                       {fBatches.map((batch) => {
@@ -700,7 +664,6 @@ export default function BatchesPage() {
                                 : "border-gray-200"
                             }`}
                           >
-                            {/* Line 1 */}
                             <div className="flex items-center justify-between gap-2">
                               <div className="flex min-w-0 items-center gap-1.5">
                                 <HealthDot health={batch.client?.accountHealth ?? "green"} />
@@ -710,7 +673,6 @@ export default function BatchesPage() {
                               </div>
                               <CardBadge batch={batch} />
                             </div>
-                            {/* Line 2 */}
                             <p className="mt-0.5 truncate text-xs text-gray-400">
                               {[
                                 batch.client?.segment,
@@ -734,7 +696,6 @@ export default function BatchesPage() {
               );
             })}
 
-            {/* Orphan batches */}
             {orphanBatches.length > 0 && (
               <div>
                 <div className="mb-2 border-b border-gray-100 pb-2">
@@ -771,9 +732,9 @@ export default function BatchesPage() {
             )}
           </div>
 
-          {/* ── Right: detail panel (only when selected) ── */}
+          {/* ── Right: detail panel (fills remaining page width) ── */}
           {selectedBatch && selectedFeature && (
-            <div className="w-[340px] shrink-0">
+            <div className="flex-1 min-w-0">
               <div className="sticky top-4">
                 <DetailPanel
                   batch={selectedBatch}
@@ -785,9 +746,7 @@ export default function BatchesPage() {
                   draft={drafts[selectedBatch.id] ?? ""}
                   onSenderChange={(id) => handleSenderChange(selectedBatch.id, id)}
                   onCcChange={(ids) => handleCcChange(selectedBatch.id, ids)}
-                  onOpenDraft={() =>
-                    setDraftInfo({ batch: selectedBatch, feature: selectedFeature })
-                  }
+                  onDraftSaved={(text) => setDrafts((prev) => ({ ...prev, [selectedBatch.id]: text }))}
                   onSend={() => sendBatch(selectedBatch.id)}
                   onClose={() => setSelected(null)}
                 />
@@ -795,20 +754,6 @@ export default function BatchesPage() {
             </div>
           )}
         </div>
-      )}
-
-      {draftInfo && (
-        <DraftModal
-          batch={draftInfo.batch}
-          feature={draftInfo.feature}
-          sender={
-            users.find((u) => u.id === getEffective(draftInfo.batch).senderId) ?? null
-          }
-          onClose={() => setDraftInfo(null)}
-          onDraftSaved={(text) =>
-            setDrafts((prev) => ({ ...prev, [draftInfo.batch.id]: text }))
-          }
-        />
       )}
     </div>
   );
