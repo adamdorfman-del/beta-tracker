@@ -54,7 +54,7 @@ router.get("/verticals", async (_req, res) => {
 router.get("/", async (req, res) => {
   try {
     const { skip, take } = parsePagination(req.query as Record<string, string>);
-    const { health, csm, segment, vertical, search, sort, dir } = req.query as Record<string, string>;
+    const { health, csm, ae, segment, vertical, search, sort, dir } = req.query as Record<string, string>;
 
     const splitParam = (v: string | undefined) => v ? v.split(",").map(s => s.trim()).filter(Boolean) : [];
     const healthVals = splitParam(health);
@@ -65,6 +65,7 @@ router.get("/", async (req, res) => {
     if (healthVals.length === 1) conditions.push(eq(clientsTable.accountHealth, healthVals[0] as any));
     if (healthVals.length > 1)  conditions.push(inArray(clientsTable.accountHealth, healthVals as any));
     if (csm)                    conditions.push(eq(clientsTable.csmOwnerId, csm));
+    if (ae)                     conditions.push(eq(clientsTable.aeOwnerId, ae));
     if (segmentVals.length === 1) conditions.push(eq(clientsTable.segment, segmentVals[0] as any));
     if (segmentVals.length > 1)  conditions.push(inArray(clientsTable.segment, segmentVals as any));
     if (verticalVals.length === 1) conditions.push(eq(clientsTable.vertical, verticalVals[0]));

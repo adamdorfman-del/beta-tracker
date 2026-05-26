@@ -36,7 +36,8 @@ export default function ClientsPage() {
   const health   = params.get("health")  ?.split(",").filter(Boolean) ?? [];
   const segment  = params.get("segment") ?.split(",").filter(Boolean) ?? [];
   const vertical = params.get("vertical")?.split(",").filter(Boolean) ?? [];
-  const csmId    = params.get("csm")   ?? "";
+  const csmId    = params.get("csm") ?? "";
+  const aeId     = params.get("ae")  ?? "";
   const search   = params.get("search") ?? "";
   const [searchInput, setSearchInput] = useState(search);
   const pageRef = useRef(1);
@@ -45,6 +46,7 @@ export default function ClientsPage() {
   const [clients, setClients]         = useState<any[]>([]);
   const [total, setTotal]             = useState(0);
   const [csms, setCsms]               = useState<any[]>([]);
+  const [aes, setAes]                 = useState<any[]>([]);
   const [verticals, setVerticals]     = useState<string[]>([]);
   const [loading, setLoading]         = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -63,6 +65,7 @@ export default function ClientsPage() {
     const q: Record<string, string> = { page: String(p), limit: "25", sort: sortCol, dir: sortDir };
     if (health.length > 0)   q.health   = health.join(",");
     if (csmId)               q.csm      = csmId;
+    if (aeId)                q.ae       = aeId;
     if (segment.length > 0)  q.segment  = segment.join(",");
     if (vertical.length > 0) q.vertical = vertical.join(",");
     if (search)              q.search   = search;
@@ -76,7 +79,11 @@ export default function ClientsPage() {
   }
 
   useEffect(() => {
-    api.users.list().then((d) => setCsms((d.users ?? []).filter((u: any) => u.role === "csm" || u.role === "admin"))).catch(() => {});
+    api.users.list().then((d) => {
+      const users = d.users ?? [];
+      setCsms(users.filter((u: any) => u.role === "csm" || u.role === "admin"));
+      setAes(users.filter((u: any) => u.role === "ae"));
+    }).catch(() => {});
     api.clients.verticals().then((d) => setVerticals(d.verticals ?? [])).catch(() => {});
   }, []);
 
@@ -84,7 +91,7 @@ export default function ClientsPage() {
     pageRef.current = 1;
     setClients([]);
     loadPage(1);
-  }, [health.join(","), csmId, segment.join(","), vertical.join(","), search, sortCol, sortDir]);
+  }, [health.join(","), csmId, aeId, segment.join(","), vertical.join(","), search, sortCol, sortDir]);
 
   useEffect(() => {
     const t = setTimeout(() => navigate(buildLink({ search: searchInput || null })), 300);
@@ -178,10 +185,15 @@ export default function ClientsPage() {
         />
         <select className="w-36 rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white"
           value={csmId} onChange={(e) => navigate(buildLink({ csm: e.target.value }))}>
-          <option value="">All CSMs</option>
+          <option value="">CSM</option>
           {csms.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        {(health.length > 0 || segment.length > 0 || vertical.length > 0 || csmId || search) && (
+        <select className="w-36 rounded-lg border border-gray-200 px-3 py-1.5 text-sm bg-white"
+          value={aeId} onChange={(e) => navigate(buildLink({ ae: e.target.value }))}>
+          <option value="">AE</option>
+          {aes.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+        {(health.length > 0 || segment.length > 0 || vertical.length > 0 || csmId || aeId || search) && (
           <button onClick={() => { setSearchInput(""); navigate("/clients"); }} className="text-sm text-gray-400 hover:text-gray-600">
             Clear filters
           </button>
@@ -199,7 +211,8 @@ export default function ClientsPage() {
                   { key: "name",     label: "Client",   cls: "" },
                   { key: "segment",  label: "Segment",  cls: "hidden sm:table-cell" },
                   { key: "health",   label: "Health",   cls: "hidden md:table-cell" },
-                  { key: "csm",      label: "CSM / AE", cls: "hidden lg:table-cell" },
+                  { key: "csm",      label: "CSM",      cls: "hidden lg:table-cell" },
+                  { key: "ae",       label: "AE",       cls: "hidden xl:table-cell" },
                   { key: "vertical", label: "Vertical", cls: "hidden xl:table-cell" },
                   { key: "betas",    label: "Betas",    cls: "hidden xl:table-cell" },
                 ] as const).map(({ key, label, cls }) => (
@@ -218,7 +231,7 @@ export default function ClientsPage() {
             <tbody className="divide-y divide-gray-100">
               {clients.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center text-sm text-gray-400">No clients found.</td>
+                  <td colSpan={8} className="py-12 text-center text-sm text-gray-400">No clients found.</td>
                 </tr>
               ) : clients.map((c) => (
                 <React.Fragment key={c.id}>
@@ -239,8 +252,10 @@ export default function ClientsPage() {
                       <HealthDot health={c.accountHealth} showLabel />
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-sm text-gray-600">
-                      <p>{c.csmOwner?.name ?? "—"}</p>
-                      {c.aeOwner && <p className="text-xs text-gray-400">AE: {c.aeOwner.name}</p>}
+                      {c.csmOwner?.name ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 hidden xl:table-cell text-sm text-gray-600">
+                      {c.aeOwner?.name ?? <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-4 py-3 hidden xl:table-cell text-sm text-gray-600">
                       {c.vertical ?? <span className="text-gray-400">—</span>}
@@ -265,7 +280,7 @@ export default function ClientsPage() {
                   </tr>
                   {expandId === c.id && (
                     <tr>
-                      <td colSpan={7} className="px-4 py-4 bg-gray-50">
+                      <td colSpan={8} className="px-4 py-4 bg-gray-50">
                         <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 mb-4 text-xs text-gray-500">
                           {c.primaryContactName && (
                             <div>
