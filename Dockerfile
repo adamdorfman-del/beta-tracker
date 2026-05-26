@@ -21,6 +21,9 @@ ENV NODE_ENV=production
 ARG VITE_CLERK_PUBLISHABLE_KEY
 ENV VITE_CLERK_PUBLISHABLE_KEY=$VITE_CLERK_PUBLISHABLE_KEY
 
+ARG VITE_GEMINI_API_KEY
+ENV VITE_GEMINI_API_KEY=$VITE_GEMINI_API_KEY
+
 RUN pnpm --filter @workspace/beta-tracker build
 RUN pnpm --filter @workspace/api-server build
 

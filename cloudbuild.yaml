@@ -5,6 +5,8 @@ steps:
       - --platform=linux/amd64
       - --build-arg
       - VITE_CLERK_PUBLISHABLE_KEY=pk_test_b3B0aW11bS1ncml6emx5LTc4LmNsZXJrLmFjY291bnRzLmRldiQ
+      - --build-arg
+      - VITE_GEMINI_API_KEY=AIzaSyBPVHazI_yS_uGGZNuDANmM2-5znpDoFlE
       - -t
       - us-central1-docker.pkg.dev/beta-tracker-497019/beta-tracker/beta-tracker:linux-amd64
       - .
