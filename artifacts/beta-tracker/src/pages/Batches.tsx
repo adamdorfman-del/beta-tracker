@@ -231,6 +231,7 @@ function DetailPanel({
   onCcChange,
   onOpenDraft,
   onSend,
+  onClose,
 }: {
   batch: OutreachBatch;
   feature: BatchFeature;
@@ -243,6 +244,7 @@ function DetailPanel({
   onCcChange: (ids: string[]) => void;
   onOpenDraft: () => void;
   onSend: () => void;
+  onClose: () => void;
 }) {
   const reminder = isReminderSuggested(batch);
   const stale = isStale(batch);
@@ -275,6 +277,19 @@ function DetailPanel({
 
   return (
     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
+      {/* Close button */}
+      <div className="flex justify-end px-3 pt-2.5">
+        <button
+          onClick={onClose}
+          className="rounded p-0.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          aria-label="Close panel"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </div>
+
       {showBanner && (
         <div className="bg-amber-50 border-b border-amber-100 px-4 py-2.5 text-xs font-medium text-amber-700">
           {reminder
@@ -579,7 +594,7 @@ export default function BatchesPage() {
           </p>
         </div>
       ) : (
-        <div className="flex items-start gap-6">
+        <div className="flex items-start gap-6 max-w-[80%]">
           {/* ── Left: batch list ── */}
           <div className="min-w-0 flex-1 space-y-6">
             {featureGroups.map(([featureId, { feature, batches: fBatches }]) => {
@@ -709,10 +724,10 @@ export default function BatchesPage() {
             )}
           </div>
 
-          {/* ── Right: detail panel ── */}
-          <div className="w-[340px] shrink-0">
-            <div className="sticky top-4">
-              {selectedBatch && selectedFeature ? (
+          {/* ── Right: detail panel (only when selected) ── */}
+          {selectedBatch && selectedFeature && (
+            <div className="w-[340px] shrink-0">
+              <div className="sticky top-4">
                 <DetailPanel
                   batch={selectedBatch}
                   feature={selectedFeature}
@@ -727,14 +742,11 @@ export default function BatchesPage() {
                     setDraftInfo({ batch: selectedBatch, feature: selectedFeature })
                   }
                   onSend={() => sendBatch(selectedBatch.id)}
+                  onClose={() => setSelected(null)}
                 />
-              ) : (
-                <div className="flex h-48 items-center justify-center rounded-xl border border-dashed border-gray-200 bg-white">
-                  <p className="text-sm text-gray-400">Select a client to take action</p>
-                </div>
-              )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 
