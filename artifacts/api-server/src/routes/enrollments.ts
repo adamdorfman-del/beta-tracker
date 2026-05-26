@@ -46,7 +46,7 @@ router.get("/", async (req, res) => {
 
     const [enrichedClients, enrichedFeatures, enrichedUsers] = await Promise.all([
       clientIds.length ? db.select().from(clientsTable).where(inArray(clientsTable.id, clientIds)) : Promise.resolve([]),
-      featureIds.length ? db.select({ id: betaFeaturesTable.id, name: betaFeaturesTable.name, status: betaFeaturesTable.status, idealClientCriteria: betaFeaturesTable.idealClientCriteria })
+      featureIds.length ? db.select({ id: betaFeaturesTable.id, name: betaFeaturesTable.name, status: betaFeaturesTable.status, idealClientCriteria: betaFeaturesTable.idealClientCriteria, slug: betaFeaturesTable.slug })
         .from(betaFeaturesTable).where(inArray(betaFeaturesTable.id, featureIds)) : Promise.resolve([]),
       userIds.length ? db.select().from(usersTable).where(inArray(usersTable.id, userIds)) : Promise.resolve([]),
     ]);
@@ -90,7 +90,7 @@ router.post("/", async (req, res) => {
     if (client.accountHealth === "red") {
       return err(res, "Client account health is red — nomination blocked.");
     }
-    if (feature.status === "closing" || feature.status === "closed") {
+    if (feature.status === "complete") {
       return err(res, "Beta is no longer accepting nominations.");
     }
 
@@ -188,6 +188,38 @@ router.post("/:id/approve", async (req, res) => {
 
     await db.insert(auditLogsTable).values({
       entityType: "BetaEnrollment", entityId: id, action: "csm_approved",
+      changedById: adminUser.id, priorState: enrollment as any, nextState: updated as any,
+    });
+
+    return ok(res, updated);
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// POST /api/enrollments/:id/unapprove
+router.post("/:id/unapprove", async (req, res) => {
+  try {
+    const adminUser = await getAdminUser();
+    const { id } = req.params;
+
+    const [enrollment] = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
+    if (!enrollment) return err(res, "Enrollment not found.", 404);
+    if (enrollment.testerStatus !== "csm_approved") {
+      return err(res, "Enrollment is not in an approvable state.");
+    }
+
+    const [updated] = await db.update(betaEnrollmentsTable).set({
+      csmApprovalStatus: "pending",
+      csmApprovedById: null,
+      csmApprovedAt: null,
+      testerStatus: "nominated",
+      updatedAt: new Date(),
+    }).where(eq(betaEnrollmentsTable.id, id)).returning();
+
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaEnrollment", entityId: id, action: "csm_approval_revoked",
       changedById: adminUser.id, priorState: enrollment as any, nextState: updated as any,
     });
 

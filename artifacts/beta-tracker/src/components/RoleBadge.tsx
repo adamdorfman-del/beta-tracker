@@ -5,6 +5,7 @@ const ROLE_STYLES: Record<string, StylePair> = {
   pmm:         { background: "#ede9fe", color: "#6d28d9" },
   csm:         { background: "#dcfce7", color: "#15803d" },
   admin:       { background: "#fee2e2", color: "#b91c1c" },
+  ae:          { background: "#ffedd5", color: "#c2410c" },
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -12,6 +13,7 @@ const ROLE_LABELS: Record<string, string> = {
   pmm:         "PMM",
   csm:         "CSM",
   admin:       "Admin",
+  ae:          "AE",
 };
 
 export function RoleBadge({ role }: { role: string }) {

@@ -23,6 +23,8 @@ export const betaFeaturesTable = pgTable("beta_features", {
   idealClientCriteria: text("ideal_client_criteria"),
   outreachDeadline: date("outreach_deadline").notNull(),
   jiraEpicLink: text("jira_epic_link").notNull().default(""),
+  slug: text("slug").unique(),
+  previousSlug: text("previous_slug"),
   clonedFromId: text("cloned_from"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),

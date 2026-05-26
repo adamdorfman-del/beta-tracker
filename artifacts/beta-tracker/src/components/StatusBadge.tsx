@@ -1,13 +1,9 @@
 import type { BetaStatus, TesterStatus, ApprovalStatus, BatchStatus } from "@/lib/types";
 
 const BETA_STATUS: Record<BetaStatus, { label: string; className: string }> = {
-  draft:         { label: "Draft",         className: "bg-gray-100 text-gray-600" },
-  recruiting:    { label: "Recruiting",    className: "bg-blue-100 text-blue-700" },
-  outreach_sent: { label: "Outreach Sent", className: "bg-violet-100 text-violet-700" },
-  full:          { label: "Full",          className: "bg-indigo-100 text-indigo-700" },
-  in_progress:   { label: "In Progress",   className: "bg-green-100 text-green-700" },
-  closing:       { label: "Closing",       className: "bg-amber-100 text-amber-700" },
-  closed:        { label: "Closed",        className: "bg-gray-200 text-gray-500" },
+  draft:       { label: "Draft",       className: "bg-gray-100 text-gray-600" },
+  in_progress: { label: "In Progress", className: "bg-blue-100 text-blue-700" },
+  complete:    { label: "Complete",    className: "bg-green-100 text-green-700" },
 };
 
 const TESTER_STATUS: Record<TesterStatus, { label: string; className: string }> = {

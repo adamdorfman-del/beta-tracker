@@ -1,0 +1,15 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - --platform=linux/amd64
+      - --build-arg
+      - VITE_CLERK_PUBLISHABLE_KEY=pk_test_b3B0aW11bS1ncml6emx5LTc4LmNsZXJrLmFjY291bnRzLmRldiQ
+      - -t
+      - us-central1-docker.pkg.dev/beta-tracker-497019/beta-tracker/beta-tracker:linux-amd64
+      - .
+images:
+  - us-central1-docker.pkg.dev/beta-tracker-497019/beta-tracker/beta-tracker:linux-amd64
+options:
+  machineType: E2_HIGHCPU_8
+  logging: CLOUD_LOGGING_ONLY

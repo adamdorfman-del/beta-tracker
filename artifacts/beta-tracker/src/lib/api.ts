@@ -3,6 +3,7 @@ const BASE = "/api";
 export async function apiFetch(path: string, options?: RequestInit) {
   const res = await fetch(`${BASE}${path}`, {
     credentials: "include",
+    cache: "no-store",
     headers: { "Content-Type": "application/json", ...options?.headers },
     ...options,
   });
@@ -33,6 +34,7 @@ export const api = {
     create: (body: object) => apiFetch("/enrollments", { method: "POST", body: JSON.stringify(body) }),
     remove: (id: string) => apiFetch(`/enrollments/${id}`, { method: "DELETE" }),
     approve: (id: string) => apiFetch(`/enrollments/${id}/approve`, { method: "POST" }),
+    unapprove: (id: string) => apiFetch(`/enrollments/${id}/unapprove`, { method: "POST" }),
     reject: (id: string, body: object) => apiFetch(`/enrollments/${id}/reject`, { method: "POST", body: JSON.stringify(body) }),
     updateStatus: (id: string, body: object) => apiFetch(`/enrollments/${id}/status`, { method: "PUT", body: JSON.stringify(body) }),
   },
@@ -46,6 +48,7 @@ export const api = {
     update: (id: string, body: object) => apiFetch(`/clients/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     remove: (id: string) => apiFetch(`/clients/${id}`, { method: "DELETE" }),
     bulkImport: (body: object) => apiFetch("/clients/bulk", { method: "POST", body: JSON.stringify(body) }),
+    verticals: () => apiFetch("/clients/verticals"),
   },
   batches: {
     list: (params?: Record<string, string>) => {
@@ -61,14 +64,28 @@ export const api = {
     features: () => apiFetch("/reports/features"),
     clients: () => apiFetch("/reports/clients"),
     csmResponsiveness: () => apiFetch("/reports/csm-responsiveness"),
+    activity: () => apiFetch("/reports/activity"),
+    sentimentByBeta: () => apiFetch("/reports/sentiment-by-beta"),
   },
   users: {
     list: () => apiFetch("/users"),
+    betas: (id: string) => apiFetch(`/users/${id}/betas`),
     create: (body: object) => apiFetch("/users", { method: "POST", body: JSON.stringify(body) }),
     update: (id: string, body: object) => apiFetch(`/users/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     remove: (id: string) => apiFetch(`/users/${id}`, { method: "DELETE" }),
   },
   me: {
     get: () => apiFetch("/me"),
+  },
+  feedback: {
+    list: (params?: Record<string, string>) => {
+      const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+      return apiFetch(`/feedback${qs}`);
+    },
+    summary: (params?: Record<string, string>) => {
+      const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+      return apiFetch(`/feedback/summary${qs}`);
+    },
+    create: (body: object) => apiFetch("/feedback", { method: "POST", body: JSON.stringify(body) }),
   },
 };

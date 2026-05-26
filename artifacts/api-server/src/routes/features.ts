@@ -1,9 +1,17 @@
 import { Router } from "express";
 import { db, betaFeaturesTable, usersTable, betaEnrollmentsTable, auditLogsTable } from "../lib/db";
 import { ok, err, parsePagination } from "../lib/helpers";
-import { eq, and, or, desc, count, inArray } from "drizzle-orm";
+import { eq, and, or, asc, desc, count, inArray, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { requireRole } from "../middlewares/requireRole";
+import { generateUniqueSlug } from "../lib/slugify";
+
+async function findFeature(slugOrId: string) {
+  let [feature] = await db.select().from(betaFeaturesTable).where(eq(betaFeaturesTable.slug, slugOrId));
+  if (!feature) [feature] = await db.select().from(betaFeaturesTable).where(eq(betaFeaturesTable.id, slugOrId));
+  if (!feature) [feature] = await db.select().from(betaFeaturesTable).where(eq(betaFeaturesTable.previousSlug, slugOrId));
+  return feature ?? null;
+}
 
 const router = Router();
 const pmOrAdmin = requireRole("pm", "admin");
@@ -12,20 +20,35 @@ const pmOrAdmin = requireRole("pm", "admin");
 router.get("/", async (req, res) => {
   try {
     const { skip, take } = parsePagination(req.query as Record<string, string>);
-    const { status, owner } = req.query as Record<string, string>;
+    const { status, owner, sort, dir } = req.query as Record<string, string>;
 
     const conditions = [];
     if (status) conditions.push(eq(betaFeaturesTable.status, status as any));
     if (owner) conditions.push(or(eq(betaFeaturesTable.ownerPmId, owner), eq(betaFeaturesTable.ownerPmmId, owner)));
 
-    const pm = db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
-      .from(usersTable).as("pm");
-    const pmm = db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
-      .from(usersTable).as("pmm");
+    const isDesc = dir === "desc";
+    const orderExpr = (() => {
+      switch (sort) {
+        case "name":    return isDesc ? desc(betaFeaturesTable.name)      : asc(betaFeaturesTable.name);
+        case "status":  return isDesc
+          ? desc(sql`CASE status WHEN 'draft' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'complete' THEN 3 END`)
+          : asc(sql`CASE status WHEN 'draft' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'complete' THEN 3 END`);
+        case "slots":   return isDesc ? desc(betaFeaturesTable.targetTesterCount) : asc(betaFeaturesTable.targetTesterCount);
+        case "pm":      return isDesc ? desc(betaFeaturesTable.ownerPmId)  : asc(betaFeaturesTable.ownerPmId);
+        case "start":   return isDesc ? desc(betaFeaturesTable.startDate)  : asc(betaFeaturesTable.startDate);
+        default:        return desc(betaFeaturesTable.createdAt);
+      }
+    })();
 
-    const features = await db.select().from(betaFeaturesTable)
+    const features = await db.select({
+      ...betaFeaturesTable,
+      filledCount:            sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.tester_status NOT IN ('dropped','cancelled'))`,
+      enrolledCount:          sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.tester_status IN ('confirmed','active','completed'))`,
+      outreachCount:          sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.tester_status IN ('csm_approved','outreach_sent'))`,
+      pendingApprovalCount:   sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.csm_approval_status = 'pending')`,
+    }).from(betaFeaturesTable)
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(betaFeaturesTable.createdAt))
+      .orderBy(orderExpr)
       .offset(skip).limit(take);
 
     const [{ value: total }] = await db.select({ value: count() }).from(betaFeaturesTable)
@@ -56,12 +79,14 @@ router.post("/", pmOrAdmin, async (req, res) => {
     if (!name || !ownerPmId || !ownerPmmId || !startDate || !outreachDeadline || !jiraEpicLink) {
       return err(res, "name, ownerPmId, ownerPmmId, startDate, outreachDeadline, and jiraEpicLink are required.");
     }
+    const slug = await generateUniqueSlug(name);
     const [feature] = await db.insert(betaFeaturesTable).values({
       name, ownerPmId, ownerPmmId,
       startDate,
       outreachDeadline,
       idealClientCriteria,
       jiraEpicLink,
+      slug,
       targetTesterCount: targetTesterCount ?? 15,
     }).returning();
     return ok(res, feature, 201);
@@ -75,7 +100,7 @@ router.post("/", pmOrAdmin, async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const [feature] = await db.select().from(betaFeaturesTable).where(eq(betaFeaturesTable.id, id));
+    const feature = await findFeature(id);
     if (!feature) return err(res, "Feature not found.", 404);
 
     const [ownerPm] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
@@ -83,7 +108,7 @@ router.get("/:id", async (req, res) => {
     const [ownerPmm] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
       .from(usersTable).where(eq(usersTable.id, feature.ownerPmmId));
 
-    const enrollments = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.featureId, id))
+    const enrollments = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.featureId, feature.id))
       .orderBy(desc(betaEnrollmentsTable.createdAt));
 
     // Enrich enrollments with client and assignedBy
@@ -121,11 +146,19 @@ router.get("/:id", async (req, res) => {
 // PUT /api/features/:id
 router.put("/:id", pmOrAdmin, async (req, res) => {
   try {
-    const { id } = req.params;
+    const existing = await findFeature(req.params.id);
+    if (!existing) return err(res, "Feature not found.", 404);
+    const id = existing.id;
     const body = req.body;
     const update: Record<string, unknown> = {};
-    if (body.name !== undefined) update.name = body.name;
-    if (body.status !== undefined) update.status = body.status;
+    if (body.name !== undefined) {
+      update.name = body.name;
+      if (body.name !== existing.name) {
+        update.previousSlug = existing.slug;
+        update.slug = await generateUniqueSlug(body.name, existing.id);
+      }
+    }
+    if (body.status !== undefined) update.status = sql`${body.status}::text::beta_status`;
     if (body.idealClientCriteria !== undefined) update.idealClientCriteria = body.idealClientCriteria;
     if (body.outreachDeadline !== undefined) update.outreachDeadline = body.outreachDeadline;
     if (body.startDate !== undefined) update.startDate = body.startDate;
@@ -147,40 +180,28 @@ router.put("/:id", pmOrAdmin, async (req, res) => {
 router.post("/:id/close", pmOrAdmin, async (req, res) => {
   try {
     const adminUser = await getAdminUser();
-    const { id } = req.params;
     const { closeReason, closeNotes, force } = req.body;
 
     if (!closeReason) return err(res, "closeReason is required.");
 
-    const [feature] = await db.select().from(betaFeaturesTable).where(eq(betaFeaturesTable.id, id));
+    const feature = await findFeature(req.params.id);
     if (!feature) return err(res, "Feature not found.", 404);
-    if (feature.status === "closed") return err(res, "Beta is already closed.");
+    const id = feature.id;
+    if (feature.status === "complete") return err(res, "Beta is already complete.");
 
     const PRE_OUTREACH_STATUSES = ["nominated", "csm_pending", "csm_approved", "outreach_sent"];
     await db.update(betaEnrollmentsTable)
       .set({ testerStatus: "cancelled", updatedAt: new Date() })
       .where(and(eq(betaEnrollmentsTable.featureId, id), inArray(betaEnrollmentsTable.testerStatus, PRE_OUTREACH_STATUSES as any)));
 
-    const [{ value: activeCount }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
-      .where(and(eq(betaEnrollmentsTable.featureId, id), eq(betaEnrollmentsTable.testerStatus, "active")));
-
-    let newStatus: "closed" | "closing";
-    let closedAt: Date | undefined;
-
-    if (force || activeCount === 0) {
-      if (force && activeCount > 0) {
-        await db.update(betaEnrollmentsTable)
-          .set({ testerStatus: "dropped", droppedAt: new Date(), updatedAt: new Date() })
-          .where(and(eq(betaEnrollmentsTable.featureId, id), eq(betaEnrollmentsTable.testerStatus, "active")));
-      }
-      newStatus = "closed";
-      closedAt = new Date();
-    } else {
-      newStatus = "closing";
+    if (force) {
+      await db.update(betaEnrollmentsTable)
+        .set({ testerStatus: "dropped", droppedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(betaEnrollmentsTable.featureId, id), eq(betaEnrollmentsTable.testerStatus, "active")));
     }
 
     const [updated] = await db.update(betaFeaturesTable)
-      .set({ status: newStatus, closedAt: closedAt ?? null, closeReason, closeNotes, updatedAt: new Date() })
+      .set({ status: sql`'complete'::text::beta_status`, closedAt: new Date(), closeReason, closeNotes, updatedAt: new Date() })
       .where(eq(betaFeaturesTable.id, id)).returning();
 
     await db.insert(auditLogsTable).values({
@@ -199,13 +220,14 @@ router.post("/:id/close", pmOrAdmin, async (req, res) => {
 router.post("/:id/clone", pmOrAdmin, async (req, res) => {
   try {
     const adminUser = await getAdminUser();
-    const { id } = req.params;
     const body = req.body ?? {};
-    const [source] = await db.select().from(betaFeaturesTable).where(eq(betaFeaturesTable.id, id));
+    const source = await findFeature(req.params.id);
     if (!source) return err(res, "Feature not found.", 404);
 
+    const cloneName = body.name ?? `${source.name} (clone)`;
+    const cloneSlug = await generateUniqueSlug(cloneName);
     const [clone] = await db.insert(betaFeaturesTable).values({
-      name: body.name ?? `${source.name} (clone)`,
+      name: cloneName,
       ownerPmId: body.ownerPmId ?? source.ownerPmId,
       ownerPmmId: body.ownerPmmId ?? source.ownerPmmId,
       targetTesterCount: source.targetTesterCount,
@@ -213,6 +235,7 @@ router.post("/:id/clone", pmOrAdmin, async (req, res) => {
       startDate: body.startDate ?? source.startDate,
       outreachDeadline: body.outreachDeadline ?? source.outreachDeadline,
       idealClientCriteria: source.idealClientCriteria,
+      slug: cloneSlug,
       clonedFromId: source.id,
     }).returning();
 

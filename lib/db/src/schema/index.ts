@@ -4,3 +4,4 @@ export * from "./clients.ts";
 export * from "./enrollments.ts";
 export * from "./batches.ts";
 export * from "./auditLogs.ts";
+export * from "./feedback.ts";

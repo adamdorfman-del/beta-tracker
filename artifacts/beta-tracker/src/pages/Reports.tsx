@@ -72,7 +72,7 @@ export default function ReportsPage() {
 
   if (loading) return <div className="py-16 text-center text-sm text-gray-400">Loading…</div>;
 
-  const closedFeatures = features.filter((f) => f.status === "closed" && f.closedAt);
+  const closedFeatures = features.filter((f) => f.status === "complete" && f.closedAt);
   const durationData = closedFeatures.map((f) => ({
     name: f.name.replace(/^Project /, ""),
     days: f.durationDays ?? 0,

@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 
-export function useInfiniteScroll(onLoadMore: () => void, enabled: boolean) {
+export function useInfiniteScroll(
+  onLoadMore: () => void,
+  enabled: boolean,
+  rootRef?: React.RefObject<Element | null>,
+) {
   const ref = useRef<HTMLDivElement>(null);
   const callbackRef = useRef(onLoadMore);
   callbackRef.current = onLoadMore;
@@ -10,11 +14,11 @@ export function useInfiniteScroll(onLoadMore: () => void, enabled: boolean) {
     if (!el || !enabled) return;
     const obs = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting) callbackRef.current(); },
-      { rootMargin: "300px" }
+      { root: rootRef?.current ?? null, rootMargin: "120px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [enabled]);
+  }, [enabled, rootRef?.current]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return ref;
 }

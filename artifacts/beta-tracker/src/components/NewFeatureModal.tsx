@@ -7,7 +7,9 @@ export function NewFeatureModal({ onClose, onCreated }: { onClose: () => void; o
   const [ownerPmmId, setOwnerPmmId] = useState("");
   const [startDate, setStartDate] = useState("");
   const [outreachDeadline, setOutreachDeadline] = useState("");
-  const [idealClientCriteria, setIdealClientCriteria] = useState("");
+  const [idealClientCriteria, setIdealClientCriteria] = useState(
+    "Active customers with a relevant use case, green or yellow account health, and willingness to provide structured feedback within the beta period."
+  );
   const [targetTesterCount, setTargetTesterCount] = useState("15");
   const [jiraEpicLink, setJiraEpicLink] = useState("");
   const [users, setUsers] = useState<any[]>([]);

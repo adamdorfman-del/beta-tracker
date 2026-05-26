@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { db, betaFeaturesTable, betaEnrollmentsTable, clientsTable, usersTable } from "../lib/db";
+import { db, betaFeaturesTable, betaEnrollmentsTable, clientsTable, usersTable, auditLogsTable, feedbackTable } from "../lib/db";
 import { ok, err, parsePagination, parseDateRange } from "../lib/helpers";
-import { eq, and, desc, count, inArray, isNotNull, lte, gte, notInArray, arrayOverlaps } from "drizzle-orm";
+import { eq, and, desc, count, inArray, isNotNull, lte, gte, notInArray, isNull, sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -15,13 +15,14 @@ router.get("/overview", async (req, res) => {
     }
 
     const [{ value: totalConfirmed }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
-      .where(eq(betaEnrollmentsTable.testerStatus, "confirmed"));
+      .where(inArray(betaEnrollmentsTable.testerStatus, ["confirmed", "active"] as any));
     const [{ value: totalOutreachSent }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
-      .where(isNotNull(betaEnrollmentsTable.outreachSentAt));
+      .where(eq(betaEnrollmentsTable.testerStatus, "outreach_sent" as any));
 
-    const closedFeatures = features.filter(f => f.status === "closed" && f.closedAt);
-    const durations = closedFeatures.map(f =>
-      (new Date(f.closedAt!).getTime() - new Date(f.startDate).getTime()) / 86400000
+    const today = new Date();
+    const activeFeatures = features.filter(f => !f.closedAt && new Date(f.startDate) <= today);
+    const durations = activeFeatures.map(f =>
+      (today.getTime() - new Date(f.startDate).getTime()) / 86400000
     );
     const avgBetaDurationDays = durations.length
       ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
@@ -42,7 +43,7 @@ router.get("/at-risk", async (req, res) => {
 
     const underFilledFeatures = await db.select().from(betaFeaturesTable)
       .where(and(
-        arrayOverlaps(betaFeaturesTable.status as any, ["recruiting", "outreach_sent"]),
+        inArray(betaFeaturesTable.status, ["in_progress"] as any),
         lte(betaFeaturesTable.startDate, soonStart.toISOString().split("T")[0])
       ));
 
@@ -74,7 +75,7 @@ router.get("/at-risk", async (req, res) => {
     const saFeatureIds = [...new Set(staleApprovals.map(e => e.featureId))];
     const [saClients, saFeatures] = await Promise.all([
       clientIds.length > 0 ? db.select().from(clientsTable).where(inArray(clientsTable.id, clientIds)) : Promise.resolve([]),
-      saFeatureIds.length > 0 ? db.select({ id: betaFeaturesTable.id, name: betaFeaturesTable.name }).from(betaFeaturesTable).where(inArray(betaFeaturesTable.id, saFeatureIds)) : Promise.resolve([]),
+      saFeatureIds.length > 0 ? db.select({ id: betaFeaturesTable.id, name: betaFeaturesTable.name, slug: betaFeaturesTable.slug }).from(betaFeaturesTable).where(inArray(betaFeaturesTable.id, saFeatureIds)) : Promise.resolve([]),
     ]);
     const saClientMap = Object.fromEntries(saClients.map(c => [c.id, c]));
     const saFeatureMap = Object.fromEntries(saFeatures.map(f => [f.id, f]));
@@ -94,7 +95,7 @@ router.get("/at-risk", async (req, res) => {
         feature: saFeatureMap[e.featureId] ?? null,
         client: saClientMap[e.clientId] ? { id: saClientMap[e.clientId].id, name: saClientMap[e.clientId].name } : null,
         csmOwner: saClientMap[e.clientId] ? (csmOwnerMap[saClientMap[e.clientId].csmOwnerId] ?? null) : null,
-        pendingSinceHours: Math.round((now.getTime() - new Date(e.createdAt).getTime()) / 3600000),
+        pendingSinceDays: Math.round((now.getTime() - new Date(e.createdAt).getTime()) / 86400000),
       })),
     });
   } catch (e) {
@@ -224,6 +225,106 @@ router.get("/csm-responsiveness", async (req, res) => {
     }).sort((a, b) => a.avgHours - b.avgHours);
 
     return ok(res, { csms: rows });
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// GET /api/reports/sentiment-by-beta
+router.get("/sentiment-by-beta", async (req, res) => {
+  try {
+    const activeStatuses = ["recruiting", "outreach_sent", "in_progress"];
+    const features = await db
+      .select({ id: betaFeaturesTable.id, name: betaFeaturesTable.name, slug: betaFeaturesTable.slug, status: betaFeaturesTable.status })
+      .from(betaFeaturesTable)
+      .where(inArray(betaFeaturesTable.status, activeStatuses as any));
+
+    if (features.length === 0) return ok(res, { features: [] });
+
+    const featureIds = features.map(f => f.id);
+    const feedbackRows = await db
+      .select({
+        featureId: feedbackTable.featureId,
+        total:    sql<number>`COUNT(*)`,
+        positive: sql<number>`SUM(CASE WHEN ${feedbackTable.sentiment} = 'positive' THEN 1 ELSE 0 END)`,
+      })
+      .from(feedbackTable)
+      .where(inArray(feedbackTable.featureId, featureIds))
+      .groupBy(feedbackTable.featureId);
+
+    const feedbackMap = Object.fromEntries(feedbackRows.map(r => [r.featureId, r]));
+
+    const result = features.map(f => {
+      const fb = feedbackMap[f.id];
+      const total    = fb ? Number(fb.total)    : 0;
+      const positive = fb ? Number(fb.positive) : 0;
+      return {
+        id: f.id, name: f.name, slug: f.slug, status: f.status,
+        total,
+        positive,
+        positiveRate: total > 0 ? positive / total : null,
+      };
+    });
+
+    return ok(res, { features: result });
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// GET /api/reports/activity
+router.get("/activity", async (req, res) => {
+  try {
+    const logs = await db.select().from(auditLogsTable)
+      .orderBy(desc(auditLogsTable.createdAt))
+      .limit(10);
+
+    if (logs.length === 0) return ok(res, { activities: [] });
+
+    const userIds = [...new Set(logs.map(l => l.changedById))];
+    const users = userIds.length > 0
+      ? await db.select({ id: usersTable.id, name: usersTable.name }).from(usersTable).where(inArray(usersTable.id, userIds))
+      : [];
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+    const clientIdSet = new Set<string>();
+    const featureIdSet = new Set<string>();
+    for (const log of logs) {
+      const state = (log.nextState ?? log.priorState) as any;
+      if (state?.clientId) clientIdSet.add(state.clientId);
+      if (state?.featureId) featureIdSet.add(state.featureId);
+    }
+
+    const [clients, features] = await Promise.all([
+      clientIdSet.size > 0
+        ? db.select({ id: clientsTable.id, name: clientsTable.name }).from(clientsTable).where(inArray(clientsTable.id, [...clientIdSet]))
+        : Promise.resolve([]),
+      featureIdSet.size > 0
+        ? db.select({ id: betaFeaturesTable.id, name: betaFeaturesTable.name, slug: betaFeaturesTable.slug }).from(betaFeaturesTable).where(inArray(betaFeaturesTable.id, [...featureIdSet]))
+        : Promise.resolve([]),
+    ]);
+    const clientMap = Object.fromEntries(clients.map(c => [c.id, c]));
+    const featureMap = Object.fromEntries(features.map(f => [f.id, f]));
+
+    const activities = logs.map(log => {
+      const state = (log.nextState ?? log.priorState) as any;
+      const client = state?.clientId ? clientMap[state.clientId] : null;
+      const feature = state?.featureId ? featureMap[state.featureId] : null;
+      return {
+        id: log.id,
+        action: log.action,
+        entityType: log.entityType,
+        clientName: client?.name ?? null,
+        featureName: feature?.name ?? null,
+        featureSlug: (feature as any)?.slug ?? null,
+        actorName: userMap[log.changedById]?.name ?? null,
+        createdAt: log.createdAt,
+      };
+    });
+
+    return ok(res, { activities });
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);

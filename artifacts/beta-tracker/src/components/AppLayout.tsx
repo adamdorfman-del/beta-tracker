@@ -1,20 +1,11 @@
-import { useEffect, useState } from "react";
 import { useClerk, useUser } from "@clerk/react";
 import { NavSidebar } from "./NavSidebar";
-import { api } from "@/lib/api";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const [pendingApprovals, setPendingApprovals] = useState(0);
   const { signOut } = useClerk();
   const { user } = useUser();
-
-  useEffect(() => {
-    api.enrollments.list({ approvalStatus: "pending", limit: "1" })
-      .then((data) => setPendingApprovals(data.total ?? 0))
-      .catch(() => {});
-  }, []);
 
   const displayName =
     user?.firstName
@@ -43,7 +34,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          <NavSidebar pendingApprovals={pendingApprovals} />
+          <NavSidebar />
         </div>
 
         {/* User footer */}

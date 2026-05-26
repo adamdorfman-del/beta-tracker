@@ -1,9 +1,10 @@
-export type BetaStatus = "draft" | "recruiting" | "outreach_sent" | "full" | "in_progress" | "closing" | "closed";
+export type BetaStatus = "draft" | "in_progress" | "complete";
 export type TesterStatus = "nominated" | "csm_pending" | "csm_approved" | "outreach_sent" | "confirmed" | "active" | "completed" | "dropped" | "cancelled";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type BatchStatus = "pending" | "ready" | "sent";
 export type HealthStatus = "green" | "yellow" | "red";
-export type UserRole = "pm" | "pmm" | "csm" | "admin";
+export type Segment = "Strategic" | "Enterprise" | "Commercial" | "Professional" | "Channel";
+export type UserRole = "pm" | "pmm" | "csm" | "admin" | "ae";
 export type CloseReason = "completed" | "cancelled" | "merged" | "paused";
 
 export interface User {
@@ -39,6 +40,8 @@ export interface Client {
   csmOwnerId: string;
   tier: number;
   accountHealth: HealthStatus;
+  segment: Segment | null;
+  vertical: string | null;
   outreachLock: boolean;
   lastOutreachDate: string | null;
   notes: string | null;

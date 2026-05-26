@@ -1,129 +1,339 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { UserPlus, CheckCircle2, MessageSquare, UserMinus, Activity } from "lucide-react";
 import { api } from "@/lib/api";
 import { BetaStatusBadge } from "@/components/StatusBadge";
-import { SlotFill } from "@/components/SlotFill";
 import type { BetaStatus } from "@/lib/types";
 
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function relTime(dateStr: string | Date): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "Yesterday";
+  return `${days} days ago`;
+}
+
+function fmt(date: string) {
+  return new Date(date).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+// ── activity config ───────────────────────────────────────────────────────────
+
+const ACTION_CONFIG: Record<string, { icon: React.ComponentType<any>; iconCls: string; label: string }> = {
+  nominated:       { icon: UserPlus,      iconCls: "bg-purple-100 text-purple-600", label: "Enrollment added" },
+  csm_approved:    { icon: CheckCircle2,  iconCls: "bg-green-100 text-green-600",   label: "Approval given" },
+  feedback_logged: { icon: MessageSquare, iconCls: "bg-blue-100 text-blue-600",     label: "Feedback logged" },
+  removed:         { icon: UserMinus,     iconCls: "bg-red-100 text-red-600",       label: "Client removed" },
+};
+
+function ActivityDescription({ act }: { act: any }) {
+  const client = act.clientName ? <span className="font-medium text-gray-900">{act.clientName}</span> : null;
+  const feature = act.featureName ?? null;
+
+  switch (act.action) {
+    case "nominated":
+      return <span className="text-sm text-gray-600">Enrollment added for {client}{feature ? <> in {feature}</> : null}</span>;
+    case "removed":
+      return <span className="text-sm text-gray-600">{client}{feature ? <> removed from {feature}</> : " removed"}</span>;
+    case "csm_approved":
+      return <span className="text-sm text-gray-600">Approval given for {client}{feature ? <> in {feature}</> : null}</span>;
+    case "feedback_logged":
+      return <span className="text-sm text-gray-600">Feedback logged for {client}{feature ? <> in {feature}</> : null}</span>;
+    default:
+      return <span className="text-sm text-gray-600">{act.action.replace(/_/g, " ")} on {act.entityType}</span>;
+  }
+}
+
+// ── card shell ────────────────────────────────────────────────────────────────
+
+function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={`rounded-xl border border-gray-200 bg-white p-5 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function CardTitle({ children, href }: { children: React.ReactNode; href?: string }) {
+  const cls = "text-sm font-semibold text-gray-700";
+  if (href) return <Link href={href} className={`${cls} hover:text-blue-600 hover:underline`}>{children}</Link>;
+  return <h2 className={cls}>{children}</h2>;
+}
+
+// ── page ─────────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
-  const [overview, setOverview] = useState<any>(null);
-  const [atRisk, setAtRisk] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [overview, setOverview]               = useState<any>(null);
+  const [atRisk, setAtRisk]                   = useState<any>(null);
+  const [me, setMe]                           = useState<any>(null);
+  const [myFeatures, setMyFeatures]           = useState<any[]>([]);
+  const [feedbackSummary, setFeedbackSummary] = useState<any>(null);
+  const [sentimentByBeta, setSentimentByBeta] = useState<any[]>([]);
+  const [activity, setActivity]               = useState<any[]>([]);
+  const [loading, setLoading]                 = useState(true);
+  const [location] = useLocation();
 
   useEffect(() => {
-    Promise.all([api.reports.overview(), api.reports.atRisk()])
-      .then(([ov, ar]) => { setOverview(ov); setAtRisk(ar); })
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+    setLoading(true);
+    const meLoad = api.me.get().then(async (d: any) => {
+      setMe(d.user);
+      const r = await api.features.list({ owner: d.user.id, limit: "5" });
+      setMyFeatures(r.features ?? []);
+    });
+    Promise.allSettled([
+      meLoad,
+      api.reports.overview().then(setOverview),
+      api.reports.atRisk().then(setAtRisk),
+      api.feedback.summary().then(setFeedbackSummary),
+      api.reports.sentimentByBeta().then((d: any) => setSentimentByBeta(d.features ?? [])),
+      api.reports.activity().then((d: any) => setActivity(d.activities ?? [])),
+    ]).finally(() => setLoading(false));
+  }, [location]);
 
   if (loading) return <div className="py-16 text-center text-sm text-gray-400">Loading…</div>;
 
-  const counts = overview?.featureCountsByStatus ?? {};
+  // ── stat card data ──
+  const counts       = overview?.featureCountsByStatus ?? {};
   const totalFeatures = Object.values(counts).reduce((a: number, b: any) => a + b, 0);
-  const totalConfirmed = overview?.totalConfirmed ?? 0;
-  const totalOutreach = overview?.totalOutreachSent ?? 0;
-  const avgDuration = overview?.avgBetaDurationDays;
-  const underFilled = atRisk?.underFilledFeatures ?? [];
-  const staleApprovals = atRisk?.staleApprovals ?? [];
+  const avgDuration  = overview?.avgBetaDurationDays;
 
   const statCards = [
-    { label: "Total Features",    value: totalFeatures,                              href: "/features" },
-    { label: "Confirmed Testers", value: totalConfirmed,                             href: "/approvals" },
-    { label: "Outreach Sent",     value: totalOutreach,                              href: "/batches" },
-    { label: "Avg Beta Duration", value: avgDuration != null ? `${avgDuration}d` : "—", href: "/reports" },
+    { label: "Total Features",    value: totalFeatures,                                    href: "/features" },
+    { label: "Confirmed Testers", value: overview?.totalConfirmed ?? 0,                    href: "/features" },
+    { label: "Outreach Sent",     value: overview?.totalOutreachSent ?? 0,                 href: "/features" },
+    { label: "Avg Beta Duration", value: avgDuration != null ? `${avgDuration}d` : "—",    href: "/reports" },
   ];
 
-  const activeStatuses: BetaStatus[] = ["recruiting", "outreach_sent", "full", "in_progress", "closing"];
+  // ── features by stage ──
+  const stageStatuses: BetaStatus[] = ["draft", "in_progress", "complete"];
+
+  // ── sentiment ──
+  const totals      = feedbackSummary?.totals ?? { total: 0, positive: 0, neutral: 0, negative: 0 };
+  const posRate     = totals.total > 0 ? Math.round((totals.positive / totals.total) * 100) : 0;
+
+  // ── sentiment by beta ──
+  const MAX_ROWS = 8;
+  const hasTooMany = sentimentByBeta.length > MAX_ROWS;
+  // If > 8 active betas, keep the 8 with most responses; then sort by rate asc, nulls last
+  const sentimentRows: any[] = (() => {
+    const pool = hasTooMany
+      ? [...sentimentByBeta].sort((a, b) => b.total - a.total).slice(0, MAX_ROWS)
+      : [...sentimentByBeta];
+    return pool.sort((a, b) => {
+      if (a.positiveRate === null && b.positiveRate === null) return 0;
+      if (a.positiveRate === null) return 1;
+      if (b.positiveRate === null) return -1;
+      return a.positiveRate - b.positiveRate;
+    });
+  })();
+
+  // ── stale approvals ──
+  const staleApprovals = atRisk?.staleApprovals ?? [];
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
 
+      {/* Row 1 — stat cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {statCards.map(({ label, value, href }) => (
-          <Link key={label} href={href} className="rounded-xl border border-gray-200 bg-white p-5 hover:border-gray-300 hover:bg-gray-50 transition-colors">
+          <Link key={label} href={href}
+            className="rounded-xl border border-gray-200 bg-white p-5 hover:border-gray-300 hover:bg-gray-50 transition-colors">
             <p className="text-xs text-gray-500 uppercase tracking-wide">{label}</p>
             <p className="mt-1 text-3xl font-bold text-gray-900">{value}</p>
           </Link>
         ))}
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Active betas by status</h2>
-        <div className="flex flex-wrap gap-3">
-          {activeStatuses.map((s) => (
-            <Link key={s} href={`/features?status=${s}`} className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50">
-              <BetaStatusBadge status={s} />
-              <span className="font-semibold text-gray-900">{counts[s] ?? 0}</span>
-            </Link>
-          ))}
-        </div>
+      {/* Row 2 — Features by Stage + My Betas */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Features by Stage */}
+        <Card>
+          <CardTitle>Features by stage</CardTitle>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {stageStatuses.map((s) => (
+              <Link key={s} href={`/features?status=${s}`}
+                className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 transition-colors">
+                <BetaStatusBadge status={s} />
+                <span className="font-semibold text-gray-900">{counts[s] ?? 0}</span>
+              </Link>
+            ))}
+          </div>
+        </Card>
+
+        {/* My Betas */}
+        <Card>
+          <CardTitle href={me ? `/features?owner=${me.id}` : "/features"}>My Betas</CardTitle>
+          <div className="mt-4">
+            {myFeatures.length === 0 ? (
+              <p className="text-sm text-gray-400">No features assigned to you yet.</p>
+            ) : (
+              <div className="divide-y divide-gray-100">
+                {myFeatures.map((f: any) => (
+                  <Link key={f.id} href={`/features/${f.slug ?? f.id}`}
+                    className="flex items-center justify-between py-2.5 hover:bg-gray-50 -mx-2 px-2 rounded-lg transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{f.name}</p>
+                      <p className="text-xs text-gray-400">{fmt(f.startDate)}</p>
+                    </div>
+                    <div className="flex items-center gap-3 ml-3 shrink-0">
+                      <BetaStatusBadge status={f.status} />
+                      <span className="text-xs text-gray-400 whitespace-nowrap">
+                        {f.enrolledCount ?? 0}/{f.targetTesterCount}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-gray-700">
-            Under-filled within 5 days of start
-            {underFilled.length > 0 && (
-              <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
-                {underFilled.length}
-              </span>
+      {/* Row 3 — Sentiment + Needing Attention + Approvals */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Sentiment Snapshot */}
+        <Card>
+          <CardTitle href="/feedback">Sentiment Snapshot</CardTitle>
+          <div className="mt-4">
+            {totals.total === 0 ? (
+              <p className="text-sm text-gray-400">No feedback logged yet.</p>
+            ) : (
+              <>
+                <p className="text-4xl font-bold text-green-600">{posRate}%</p>
+                <p className="mt-1 text-xs text-gray-400">positive across all active betas</p>
+                <div className="mt-3 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
+                  <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${posRate}%` }} />
+                </div>
+                <div className="mt-3 flex gap-4 text-xs text-gray-500">
+                  <span><span className="font-medium text-green-700">{totals.positive}</span> positive</span>
+                  <span><span className="font-medium text-red-700">{totals.negative}</span> negative</span>
+                  <span><span className="font-medium text-gray-700">{totals.neutral}</span> neutral</span>
+                </div>
+              </>
             )}
-          </h2>
-          {underFilled.length === 0 ? (
-            <p className="text-sm text-gray-400">None — all betas on track.</p>
-          ) : (
-            <div className="space-y-2">
-              {underFilled.map((f: any) => (
-                <Link
-                  key={f.id}
-                  href={`/features/${f.id}`}
-                  className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 hover:bg-amber-100"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{f.name}</p>
-                    <p className="text-xs text-gray-500">PM: {f.ownerPm?.name} · starts {new Date(f.startDate).toLocaleDateString()}</p>
-                  </div>
-                  <SlotFill confirmed={f.confirmedCount} target={f.target} />
-                </Link>
-              ))}
-            </div>
-          )}
-        </section>
+          </div>
+        </Card>
 
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-gray-700">
-            Approvals pending 48h+
+        {/* Sentiment by Beta */}
+        <Card>
+          <CardTitle href="/feedback">Sentiment by Beta</CardTitle>
+          <div className="mt-3">
+            {sentimentByBeta.length === 0 ? (
+              <p className="text-sm text-gray-400">No active betas.</p>
+            ) : (
+              <>
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className="pb-1.5 text-left font-medium text-gray-400">Feature</th>
+                      <th className="pb-1.5 text-right font-medium text-gray-400 pr-3">Responses</th>
+                      <th className="pb-1.5 text-left font-medium text-gray-400 w-28">Positive rate</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {sentimentRows.map((f: any) => {
+                      const pct = f.positiveRate !== null ? Math.round(f.positiveRate * 100) : null;
+                      const barCls = pct === null ? "" : pct >= 66 ? "bg-green-500" : pct >= 50 ? "bg-amber-400" : "bg-red-500";
+                      const pctCls = pct === null ? "text-gray-400" : pct >= 66 ? "text-green-700" : pct >= 50 ? "text-amber-700" : "text-red-700";
+                      return (
+                        <tr key={f.id} className="group">
+                          <td className="py-2 pr-2 max-w-0">
+                            <span className="block truncate font-medium text-gray-900">{f.name}</span>
+                          </td>
+                          <td className="py-2 pr-3 text-right text-gray-500 shrink-0">
+                            {f.total > 0 ? f.total : <span className="text-gray-300">—</span>}
+                          </td>
+                          <td className="py-2 w-28">
+                            {pct === null ? (
+                              <span className="text-gray-300">—</span>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <div className="h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden shrink-0">
+                                  <div className={`h-full rounded-full ${barCls}`} style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className={`font-medium shrink-0 ${pctCls}`}>{pct}%</span>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {hasTooMany && (
+                  <div className="mt-2 text-right">
+                    <Link href="/feedback" className="text-xs text-gray-400 hover:text-gray-600">View all →</Link>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </Card>
+
+        {/* Approvals Pending 2d+ */}
+        <Card>
+          <div className="flex items-center gap-2 mb-4">
+            <CardTitle>Approvals pending 2d+</CardTitle>
             {staleApprovals.length > 0 && (
-              <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">
+              <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700 font-medium">
                 {staleApprovals.length}
               </span>
             )}
-          </h2>
+          </div>
           {staleApprovals.length === 0 ? (
             <p className="text-sm text-gray-400">No stale approvals.</p>
           ) : (
             <div className="space-y-2">
               {staleApprovals.map((e: any) => (
-                <Link
-                  key={e.enrollmentId}
-                  href="/approvals"
-                  className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 hover:bg-red-100"
-                >
+                <Link key={e.enrollmentId} href={`/features/${e.feature?.slug ?? e.feature?.id ?? ""}`}
+                  className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 hover:bg-red-100 transition-colors">
                   <div>
                     <p className="text-sm font-medium text-gray-900">{e.client?.name}</p>
-                    <p className="text-xs text-gray-500">
-                      {e.feature?.name} · CSM: {e.csmOwner?.name}
-                    </p>
+                    <p className="text-xs text-gray-500">{e.feature?.name} · CSM: {e.csmOwner?.name}</p>
                   </div>
-                  <span className="text-xs font-medium text-red-700 whitespace-nowrap">{e.pendingSinceHours}h pending</span>
+                  <span className="text-xs font-medium text-red-700 whitespace-nowrap">{e.pendingSinceDays}d pending</span>
                 </Link>
               ))}
             </div>
           )}
-        </section>
+        </Card>
       </div>
+
+      {/* Row 4 — Recent Activity */}
+      <Card>
+        <div className="flex items-center gap-2 mb-4">
+          <Activity className="h-4 w-4 text-gray-400" />
+          <CardTitle>Recent Activity</CardTitle>
+        </div>
+        {activity.length === 0 ? (
+          <p className="text-sm text-gray-400">No recent activity.</p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {activity.map((act: any) => {
+              const cfg = ACTION_CONFIG[act.action] ?? { icon: Activity, iconCls: "bg-gray-100 text-gray-500" };
+              const Icon = cfg.icon;
+              return (
+                <div key={act.id} className="flex items-start gap-3 py-3">
+                  <div className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${cfg.iconCls}`}>
+                    <Icon className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <ActivityDescription act={act} />
+                  </div>
+                  <span className="shrink-0 text-xs text-gray-400 whitespace-nowrap">{relTime(act.createdAt)}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

@@ -8,10 +8,10 @@ import DashboardPage from "@/pages/Dashboard";
 import FeaturesPage from "@/pages/Features";
 import FeatureDetailPage from "@/pages/FeatureDetail";
 import ClientsPage from "@/pages/Clients";
-import ApprovalsPage from "@/pages/Approvals";
 import BatchesPage from "@/pages/Batches";
 import ReportsPage from "@/pages/Reports";
 import StakeholdersPage from "@/pages/Stakeholders";
+import FeedbackPage from "@/pages/Feedback";
 
 const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
@@ -165,8 +165,9 @@ function AppRoutes() {
         <Route path="/features" component={FeaturesPage} />
         <Route path="/features/:id" component={FeatureDetailPage} />
         <Route path="/clients" component={ClientsPage} />
-        <Route path="/approvals" component={ApprovalsPage} />
+        <Route path="/approvals" component={() => <Redirect to="/features" />} />
         <Route path="/batches" component={BatchesPage} />
+        <Route path="/feedback" component={FeedbackPage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/stakeholders" component={StakeholdersPage} />
         <Route

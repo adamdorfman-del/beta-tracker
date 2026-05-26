@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, clientsTable, usersTable, betaEnrollmentsTable, betaFeaturesTable } from "../lib/db";
 import { ok, err, parsePagination } from "../lib/helpers";
-import { eq, and, desc, count, inArray, ilike } from "drizzle-orm";
+import { eq, and, asc, desc, count, inArray, ilike, isNotNull, sql } from "drizzle-orm";
 
 const router = Router();
 
@@ -36,21 +36,77 @@ function validateClientBody(body: any, requireAll = true) {
   };
 }
 
+// GET /api/clients/verticals — distinct non-null vertical values (must be before /:id)
+router.get("/verticals", async (_req, res) => {
+  try {
+    const rows = await db.selectDistinct({ vertical: clientsTable.vertical })
+      .from(clientsTable)
+      .where(isNotNull(clientsTable.vertical))
+      .orderBy(asc(clientsTable.vertical));
+    return ok(res, { verticals: rows.map(r => r.vertical as string) });
+  } catch (e) {
+    return err(res, "Internal error", 500);
+  }
+});
+
 // GET /api/clients
 router.get("/", async (req, res) => {
   try {
     const { skip, take } = parsePagination(req.query as Record<string, string>);
-    const { health, csm, segment, search } = req.query as Record<string, string>;
+    const { health, csm, segment, vertical, search, sort, dir } = req.query as Record<string, string>;
+
+    const splitParam = (v: string | undefined) => v ? v.split(",").map(s => s.trim()).filter(Boolean) : [];
+    const healthVals = splitParam(health);
+    const segmentVals = splitParam(segment);
+    const verticalVals = splitParam(vertical);
 
     const conditions = [];
-    if (health)   conditions.push(eq(clientsTable.accountHealth, health as any));
-    if (csm)      conditions.push(eq(clientsTable.csmOwnerId, csm));
-    if (segment)  conditions.push(eq(clientsTable.segment, segment as any));
-    if (search)   conditions.push(ilike(clientsTable.name, `%${search}%`));
+    if (healthVals.length === 1) conditions.push(eq(clientsTable.accountHealth, healthVals[0] as any));
+    if (healthVals.length > 1)  conditions.push(inArray(clientsTable.accountHealth, healthVals as any));
+    if (csm)                    conditions.push(eq(clientsTable.csmOwnerId, csm));
+    if (segmentVals.length === 1) conditions.push(eq(clientsTable.segment, segmentVals[0] as any));
+    if (segmentVals.length > 1)  conditions.push(inArray(clientsTable.segment, segmentVals as any));
+    if (verticalVals.length === 1) conditions.push(eq(clientsTable.vertical, verticalVals[0]));
+    if (verticalVals.length > 1)  conditions.push(inArray(clientsTable.vertical, verticalVals));
+    if (search)                 conditions.push(ilike(clientsTable.name, `%${search}%`));
 
-    const clients = await db.select().from(clientsTable)
+    const isDesc = dir === "desc";
+    const orderExpr = (() => {
+      switch (sort) {
+        case "segment":  return isDesc ? desc(clientsTable.segment)  : asc(clientsTable.segment);
+        case "health":   return isDesc
+          ? desc(sql`CASE account_health WHEN 'green' THEN 1 WHEN 'yellow' THEN 2 WHEN 'red' THEN 3 END`)
+          : asc(sql`CASE account_health WHEN 'green' THEN 1 WHEN 'yellow' THEN 2 WHEN 'red' THEN 3 END`);
+        case "vertical": return isDesc ? desc(clientsTable.vertical) : asc(clientsTable.vertical);
+        case "csm":      return isDesc ? desc(clientsTable.csmOwnerId) : asc(clientsTable.csmOwnerId);
+        case "betas":    return isDesc
+          ? desc(sql`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.client_id = "clients".id)`)
+          : asc(sql`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.client_id = "clients".id)`);
+        default:         return isDesc ? desc(clientsTable.name)     : asc(clientsTable.name);
+      }
+    })();
+
+    const clients = await db.select({
+      id: clientsTable.id,
+      name: clientsTable.name,
+      crmId: clientsTable.crmId,
+      csmOwnerId: clientsTable.csmOwnerId,
+      tier: clientsTable.tier,
+      segment: clientsTable.segment,
+      primaryContactName: clientsTable.primaryContactName,
+      primaryContactEmail: clientsTable.primaryContactEmail,
+      accountHealth: clientsTable.accountHealth,
+      vertical: clientsTable.vertical,
+      contractRenewalDate: clientsTable.contractRenewalDate,
+      productSubscriptions: clientsTable.productSubscriptions,
+      outreachLock: clientsTable.outreachLock,
+      lastOutreachDate: clientsTable.lastOutreachDate,
+      notes: clientsTable.notes,
+      createdAt: clientsTable.createdAt,
+      betaCount: sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.client_id = "clients".id)`,
+    }).from(clientsTable)
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(clientsTable.name)
+      .orderBy(orderExpr)
       .offset(skip).limit(take);
 
     const [{ value: total }] = await db.select({ value: count() }).from(clientsTable)
@@ -150,7 +206,7 @@ router.get("/:id", async (req, res) => {
 
     const featureIds = [...new Set(enrollments.map(e => e.featureId))];
     const features = featureIds.length > 0 ? await db.select({
-      id: betaFeaturesTable.id, name: betaFeaturesTable.name, status: betaFeaturesTable.status
+      id: betaFeaturesTable.id, name: betaFeaturesTable.name, status: betaFeaturesTable.status, slug: betaFeaturesTable.slug
     }).from(betaFeaturesTable).where(inArray(betaFeaturesTable.id, featureIds)) : [];
     const featureMap = Object.fromEntries(features.map(f => [f.id, f]));
     const enrichedEnrollments = enrollments.map(e => ({ ...e, feature: featureMap[e.featureId] ?? null }));
@@ -212,7 +268,7 @@ router.get("/:id/betas", async (req, res) => {
       .where(eq(betaEnrollmentsTable.clientId, id));
     const featureIds = [...new Set(enrollments.map(e => e.featureId))];
     const features = featureIds.length > 0 ? await db.select({
-      id: betaFeaturesTable.id, name: betaFeaturesTable.name, status: betaFeaturesTable.status, startDate: betaFeaturesTable.startDate
+      id: betaFeaturesTable.id, name: betaFeaturesTable.name, status: betaFeaturesTable.status, startDate: betaFeaturesTable.startDate, slug: betaFeaturesTable.slug
     }).from(betaFeaturesTable).where(inArray(betaFeaturesTable.id, featureIds)) : [];
     const featureMap = Object.fromEntries(features.map(f => [f.id, f]));
     const enriched = enrollments.map(e => ({ ...e, feature: featureMap[e.featureId] ?? null }));
