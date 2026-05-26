@@ -78,6 +78,9 @@ export const api = {
     update: (id: string, body: object) => apiFetch(`/users/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     remove: (id: string) => apiFetch(`/users/${id}`, { method: "DELETE" }),
   },
+  auth: {
+    reauth: () => apiFetch("/auth/reauth", { method: "POST" }),
+  },
   me: {
     get: () => apiFetch("/me"),
   },

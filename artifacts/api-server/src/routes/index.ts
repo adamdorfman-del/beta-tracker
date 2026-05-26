@@ -10,6 +10,7 @@ import reportsRouter from "./reports";
 import usersRouter from "./users";
 import meRouter from "./me";
 import feedbackRouter from "./feedback";
+import authRouter from "./auth";
 
 const router: IRouter = Router();
 
@@ -18,6 +19,7 @@ router.use(healthRouter);
 router.use(requireBirdeyeAuth);
 
 router.use("/me", meRouter);
+router.use("/auth", authRouter);
 router.use("/features", featuresRouter);
 router.use("/enrollments", enrollmentsRouter);
 router.use("/clients", clientsRouter);

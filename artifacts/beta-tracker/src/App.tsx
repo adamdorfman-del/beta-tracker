@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ClerkProvider, SignIn, Show, useClerk, useUser } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Switch, Route, Redirect, Router as WouterRouter, useLocation } from "wouter";
 import { AppLayout } from "@/components/AppLayout";
+import { api } from "@/lib/api";
 import DashboardPage from "@/pages/Dashboard";
 import FeaturesPage from "@/pages/Features";
 import FeatureDetailPage from "@/pages/FeatureDetail";
@@ -138,49 +139,135 @@ function DomainError() {
   );
 }
 
-function AppRoutes() {
-  const { user, isLoaded } = useUser();
+const REAUTH_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+const REAUTH_FROM_KEY = "reauth_from";
 
-  if (!isLoaded) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />
-      </div>
-    );
-  }
+function ReauthPage() {
+  const { signOut } = useClerk();
 
-  const hasBirdeyeEmail = user?.emailAddresses.some((e) =>
-    e.emailAddress.endsWith("@birdeye.com"),
-  );
-
-  if (!hasBirdeyeEmail) {
-    return <DomainError />;
+  function handleSignInAgain() {
+    signOut({ redirectUrl: `${basePath}/sign-in` });
   }
 
   return (
-    <AppLayout>
-      <Switch>
-        <Route path="/" component={() => <Redirect to="/dashboard" />} />
-        <Route path="/dashboard" component={DashboardPage} />
-        <Route path="/features" component={FeaturesPage} />
-        <Route path="/features/:id" component={FeatureDetailPage} />
-        <Route path="/clients" component={ClientsPage} />
-        <Route path="/approvals" component={() => <Redirect to="/features" />} />
-        <Route path="/batches" component={BatchesPage} />
-        <Route path="/feedback" component={FeedbackPage} />
-        <Route path="/reports" component={ReportsPage} />
-        <Route path="/stakeholders" component={StakeholdersPage} />
-        <Route
-          component={() => (
-            <div className="py-16 text-center">
-              <h1 className="text-2xl font-semibold text-gray-900">
-                Page not found
-              </h1>
-            </div>
-          )}
-        />
-      </Switch>
-    </AppLayout>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[#F0F4FF] px-4 text-center">
+      <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-blue-100">
+        <svg className="h-7 w-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+            d="M12 15v2m0-6v.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+        </svg>
+      </div>
+      <h1 className="text-xl font-semibold text-gray-900">Session expired</h1>
+      <p className="mt-2 max-w-sm text-sm text-gray-500">
+        Your session has expired. Please sign in again with your Birdeye Google account to continue.
+      </p>
+      <button
+        onClick={handleSignInAgain}
+        className="mt-6 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-700"
+      >
+        Sign in again
+      </button>
+    </div>
+  );
+}
+
+function Spinner() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />
+    </div>
+  );
+}
+
+function AppRoutes() {
+  const { user, isLoaded } = useUser();
+  const [location, navigate] = useLocation();
+  const [reauthState, setReauthState] = useState<"loading" | "ready" | "completing">("loading");
+
+  const isBirdeyeUser = !!user?.emailAddresses.some((e) =>
+    e.emailAddress.endsWith("@birdeye.com"),
+  );
+
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+
+    // Non-birdeye users skip the check; domain error renders instead
+    if (!isBirdeyeUser) {
+      setReauthState("ready");
+      return;
+    }
+
+    api.me.get().then((d: any) => {
+      const lastAuth: string | null = d.user?.lastAuthAt ?? null;
+      const stale = !lastAuth || Date.now() - new Date(lastAuth).getTime() > REAUTH_WINDOW_MS;
+
+      if (!stale) {
+        setReauthState("ready");
+        return;
+      }
+
+      const pendingFrom = sessionStorage.getItem(REAUTH_FROM_KEY);
+
+      if (pendingFrom !== null) {
+        // Returning after sign-in during the reauth flow — stamp lastAuthAt then continue
+        setReauthState("completing");
+        api.auth.reauth()
+          .then(() => {
+            sessionStorage.removeItem(REAUTH_FROM_KEY);
+            setReauthState("ready");
+            navigate(pendingFrom || "/dashboard");
+          })
+          .catch(() => {
+            // On error don't block access
+            sessionStorage.removeItem(REAUTH_FROM_KEY);
+            setReauthState("ready");
+          });
+      } else {
+        // First time hitting the wall — save destination and send to /reauth
+        const from = location === "/reauth" ? "/dashboard" : location;
+        sessionStorage.setItem(REAUTH_FROM_KEY, from);
+        setReauthState("ready");
+        navigate("/reauth");
+      }
+    }).catch(() => {
+      // API error — don't block
+      setReauthState("ready");
+    });
+  }, [isLoaded, user?.id]);
+
+  if (!isLoaded || reauthState === "loading" || reauthState === "completing") {
+    return <Spinner />;
+  }
+
+  if (!isBirdeyeUser) return <DomainError />;
+
+  return (
+    <Switch>
+      <Route path="/reauth" component={ReauthPage} />
+      <Route component={() => (
+        <AppLayout>
+          <Switch>
+            <Route path="/" component={() => <Redirect to="/dashboard" />} />
+            <Route path="/dashboard" component={DashboardPage} />
+            <Route path="/features" component={FeaturesPage} />
+            <Route path="/features/:id" component={FeatureDetailPage} />
+            <Route path="/clients" component={ClientsPage} />
+            <Route path="/approvals" component={() => <Redirect to="/features" />} />
+            <Route path="/batches" component={BatchesPage} />
+            <Route path="/feedback" component={FeedbackPage} />
+            <Route path="/reports" component={ReportsPage} />
+            <Route path="/stakeholders" component={StakeholdersPage} />
+            <Route
+              component={() => (
+                <div className="py-16 text-center">
+                  <h1 className="text-2xl font-semibold text-gray-900">Page not found</h1>
+                </div>
+              )}
+            />
+          </Switch>
+        </AppLayout>
+      )} />
+    </Switch>
   );
 }
 

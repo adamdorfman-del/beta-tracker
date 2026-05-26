@@ -9,6 +9,7 @@ export const usersTable = pgTable("users", {
   role: userRoleEnum("role").notNull(),
   emailVerified: timestamp("email_verified"),
   image: text("image"),
+  lastAuthAt: timestamp("last_auth_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
