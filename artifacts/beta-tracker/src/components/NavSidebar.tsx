@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 
 const NAV = [
   { href: "/dashboard",    label: "Dashboard" },
-  { href: "/features",     label: "Features" },
+  { href: "/features",     label: "Beta Features" },
   { href: "/batches",      label: "Outreach" },
   { href: "/feedback",     label: "Feedback" },
   { href: "/clients",      label: "Clients" },

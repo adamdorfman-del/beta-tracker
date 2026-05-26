@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { db, outreachBatchesTable, outreachBatchEnrollmentsTable, betaEnrollmentsTable, clientsTable, usersTable, betaFeaturesTable, auditLogsTable } from "../lib/db";
-import { ok, err, parsePagination } from "../lib/helpers";
-import { eq, and, desc, count, inArray, isNotNull } from "drizzle-orm";
+import { db, outreachBatchesTable, outreachBatchEnrollmentsTable, betaEnrollmentsTable, clientsTable, usersTable, betaFeaturesTable } from "../lib/db";
+import { ok, err } from "../lib/helpers";
+import { eq, and, desc, count, inArray } from "drizzle-orm";
 
 const router = Router();
 
@@ -16,21 +16,24 @@ async function getAdminUser() {
 // GET /api/batches
 router.get("/", async (req, res) => {
   try {
-    const { skip, take } = parsePagination(req.query as Record<string, string>);
-
     const batches = await db.select().from(outreachBatchesTable)
-      .orderBy(desc(outreachBatchesTable.createdAt))
-      .offset(skip).limit(take);
+      .orderBy(desc(outreachBatchesTable.createdAt));
 
-    const [{ value: total }] = await db.select({ value: count() }).from(outreachBatchesTable);
+    const total = batches.length;
 
     const clientIds = [...new Set(batches.map(b => b.clientId))];
     const clients = clientIds.length > 0 ? await db.select().from(clientsTable).where(inArray(clientsTable.id, clientIds)) : [];
     const clientMap = Object.fromEntries(clients.map(c => [c.id, c]));
 
-    const sentByIds = [...new Set(batches.map(b => b.sentById).filter(Boolean) as string[])];
-    const sentByUsers = sentByIds.length > 0 ? await db.select().from(usersTable).where(inArray(usersTable.id, sentByIds)) : [];
-    const userMap = Object.fromEntries(sentByUsers.map(u => [u.id, u]));
+    // Collect all user IDs: sentBy, sender, cc
+    const userIdSet = new Set<string>();
+    batches.forEach(b => {
+      if (b.sentById) userIdSet.add(b.sentById);
+      if (b.senderId) userIdSet.add(b.senderId);
+      (b.ccIds ?? []).forEach(id => userIdSet.add(id));
+    });
+    const allUsers = userIdSet.size > 0 ? await db.select().from(usersTable).where(inArray(usersTable.id, [...userIdSet])) : [];
+    const userMap = Object.fromEntries(allUsers.map(u => [u.id, u]));
 
     const batchIds = batches.map(b => b.id);
     const batchEntries = batchIds.length > 0 ? await db.select().from(outreachBatchEnrollmentsTable)
@@ -43,7 +46,12 @@ router.get("/", async (req, res) => {
 
     const featureIds = [...new Set(enrollments.map(e => e.featureId))];
     const features = featureIds.length > 0 ? await db.select({
-      id: betaFeaturesTable.id, name: betaFeaturesTable.name
+      id: betaFeaturesTable.id,
+      name: betaFeaturesTable.name,
+      slug: betaFeaturesTable.slug,
+      status: betaFeaturesTable.status,
+      idealClientCriteria: betaFeaturesTable.idealClientCriteria,
+      targetTesterCount: betaFeaturesTable.targetTesterCount,
     }).from(betaFeaturesTable).where(inArray(betaFeaturesTable.id, featureIds)) : [];
     const featureMap = Object.fromEntries(features.map(f => [f.id, f]));
 
@@ -55,6 +63,8 @@ router.get("/", async (req, res) => {
       ...b,
       client: clientMap[b.clientId] ?? null,
       sentBy: b.sentById ? (userMap[b.sentById] ?? null) : null,
+      sender: b.senderId ? (userMap[b.senderId] ?? null) : null,
+      ccUsers: (b.ccIds ?? []).map(id => userMap[id]).filter(Boolean),
       enrollments: batchEntries
         .filter(be => be.batchId === b.id)
         .map(be => {
@@ -70,79 +80,116 @@ router.get("/", async (req, res) => {
         }),
     }));
 
-    return ok(res, { batches: enrichedBatches, total, skip, take });
+    return ok(res, { batches: enrichedBatches, total });
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);
   }
 });
 
-// POST /api/batches/trigger
+// PUT /api/batches/:id — update sender and/or ccIds
+router.put("/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { senderId, ccIds } = req.body ?? {};
+
+    const [existing] = await db.select().from(outreachBatchesTable).where(eq(outreachBatchesTable.id, id));
+    if (!existing) return err(res, "Batch not found.", 404);
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (senderId !== undefined) updates.senderId = senderId || null;
+    if (ccIds !== undefined) updates.ccIds = ccIds;
+
+    await db.update(outreachBatchesTable).set(updates).where(eq(outreachBatchesTable.id, id));
+    const [updated] = await db.select().from(outreachBatchesTable).where(eq(outreachBatchesTable.id, id));
+    return ok(res, updated);
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// POST /api/batches/trigger — group all approved unbatched enrollments
 router.post("/trigger", async (req, res) => {
   try {
-    // Group all csm_approved enrollments not yet in a batch by client
-    const unbatched = await db.select().from(betaEnrollmentsTable)
-      .where(and(
-        eq(betaEnrollmentsTable.csmApprovalStatus, "approved"),
-        eq(betaEnrollmentsTable.testerStatus, "csm_approved"),
-      ));
-
-    // Filter out those already in a batch
-    const allBatchEntries = await db.select().from(outreachBatchEnrollmentsTable);
-    const batchedEnrollmentIds = new Set(allBatchEntries.map(e => e.enrollmentId));
-    const toGroup = unbatched.filter(e => !batchedEnrollmentIds.has(e.id));
-
-    const byClient = new Map<string, typeof toGroup>();
-    for (const e of toGroup) {
-      const list = byClient.get(e.clientId) ?? [];
-      list.push(e);
-      byClient.set(e.clientId, list);
-    }
-
-    let created = 0;
-    for (const [clientId, enrollments] of byClient) {
-      // Find existing open batch for this client
-      const [existingBatch] = await db.select().from(outreachBatchesTable)
-        .where(and(
-          eq(outreachBatchesTable.clientId, clientId),
-          inArray(outreachBatchesTable.batchStatus, ["pending", "ready"] as any)
-        )).limit(1);
-
-      let batchId = existingBatch?.id;
-      if (!batchId) {
-        const [batch] = await db.insert(outreachBatchesTable).values({ clientId, batchStatus: "pending" }).returning();
-        batchId = batch.id;
-        created++;
-      }
-
-      for (const e of enrollments) {
-        await db.insert(outreachBatchEnrollmentsTable).values({ batchId, enrollmentId: e.id })
-          .onConflictDoNothing();
-      }
-
-      // Check if all enrollments are CSM approved → ready
-      const batchEntries = await db.select().from(outreachBatchEnrollmentsTable)
-        .where(eq(outreachBatchEnrollmentsTable.batchId, batchId));
-      const batchEnrollmentIds = batchEntries.map(be => be.enrollmentId);
-      if (batchEnrollmentIds.length > 0) {
-        const [{ value: pendingCount }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
-          .where(and(
-            inArray(betaEnrollmentsTable.id, batchEnrollmentIds),
-            eq(betaEnrollmentsTable.csmApprovalStatus, "pending")
-          ));
-        if (pendingCount === 0) {
-          await db.update(outreachBatchesTable).set({ batchStatus: "ready", updatedAt: new Date() })
-            .where(and(eq(outreachBatchesTable.id, batchId), eq(outreachBatchesTable.batchStatus, "pending")));
-        }
-      }
-    }
-
+    const created = await triggerBatching(null);
     return ok(res, { batched: created });
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);
   }
 });
+
+// POST /api/batches/trigger-for-feature/:featureId — group approved unbatched enrollments for one feature
+router.post("/trigger-for-feature/:featureId", async (req, res) => {
+  try {
+    const created = await triggerBatching(req.params.featureId);
+    return ok(res, { batched: created });
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+async function triggerBatching(featureId: string | null): Promise<number> {
+  const query = db.select().from(betaEnrollmentsTable)
+    .where(and(
+      eq(betaEnrollmentsTable.csmApprovalStatus, "approved"),
+      eq(betaEnrollmentsTable.testerStatus, "csm_approved"),
+      ...(featureId ? [eq(betaEnrollmentsTable.featureId, featureId)] : []),
+    ));
+
+  const unbatched = await query;
+
+  const allBatchEntries = await db.select().from(outreachBatchEnrollmentsTable);
+  const batchedEnrollmentIds = new Set(allBatchEntries.map(e => e.enrollmentId));
+  const toGroup = unbatched.filter(e => !batchedEnrollmentIds.has(e.id));
+
+  const byClient = new Map<string, typeof toGroup>();
+  for (const e of toGroup) {
+    const list = byClient.get(e.clientId) ?? [];
+    list.push(e);
+    byClient.set(e.clientId, list);
+  }
+
+  let created = 0;
+  for (const [clientId, enrollments] of byClient) {
+    const [existingBatch] = await db.select().from(outreachBatchesTable)
+      .where(and(
+        eq(outreachBatchesTable.clientId, clientId),
+        inArray(outreachBatchesTable.batchStatus, ["pending", "ready"] as any)
+      )).limit(1);
+
+    let batchId = existingBatch?.id;
+    if (!batchId) {
+      const [batch] = await db.insert(outreachBatchesTable).values({ clientId, batchStatus: "pending" }).returning();
+      batchId = batch.id;
+      created++;
+    }
+
+    for (const e of enrollments) {
+      await db.insert(outreachBatchEnrollmentsTable).values({ batchId, enrollmentId: e.id })
+        .onConflictDoNothing();
+    }
+
+    const batchEntries = await db.select().from(outreachBatchEnrollmentsTable)
+      .where(eq(outreachBatchEnrollmentsTable.batchId, batchId));
+    const batchEnrollmentIds = batchEntries.map(be => be.enrollmentId);
+    if (batchEnrollmentIds.length > 0) {
+      const [{ value: pendingCount }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
+        .where(and(
+          inArray(betaEnrollmentsTable.id, batchEnrollmentIds),
+          eq(betaEnrollmentsTable.csmApprovalStatus, "pending")
+        ));
+      if (pendingCount === 0) {
+        await db.update(outreachBatchesTable).set({ batchStatus: "ready", updatedAt: new Date() })
+          .where(and(eq(outreachBatchesTable.id, batchId), eq(outreachBatchesTable.batchStatus, "pending")));
+      }
+    }
+  }
+
+  return created;
+}
 
 // POST /api/batches/:id/send
 router.post("/:id/send", async (req, res) => {

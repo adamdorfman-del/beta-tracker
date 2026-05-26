@@ -9,7 +9,7 @@ const HEALTH_OPTIONS = [
 ];
 
 const EMPTY: Record<string, string> = {
-  name: "", crmId: "", csmOwnerId: "", segment: "",
+  name: "", crmId: "", csmOwnerId: "", aeOwnerId: "", segment: "",
   primaryContactName: "", primaryContactEmail: "",
   accountHealth: "green", vertical: "",
   contractRenewalDate: "", productSubscriptions: "", lastOutreachDate: "",
@@ -20,6 +20,7 @@ function fromClient(c: any) {
     name:                c.name ?? "",
     crmId:               c.crmId ?? "",
     csmOwnerId:          c.csmOwnerId ?? "",
+    aeOwnerId:           c.aeOwnerId ?? "",
     segment:             c.segment ?? "",
     primaryContactName:  c.primaryContactName ?? "",
     primaryContactEmail: c.primaryContactEmail ?? "",
@@ -48,6 +49,7 @@ export function ClientModal({ client, onClose, onSaved }: Props) {
   }, []);
 
   const csms = users.filter((u) => u.role === "csm" || u.role === "admin");
+  const aes  = users.filter((u) => u.role === "ae");
 
   function set(field: string, value: string) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -88,7 +90,7 @@ export function ClientModal({ client, onClose, onSaved }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Client Name <span className="text-red-500">*</span></label>
-              <input value={form.name} onChange={(e) => set("name", e.target.value)} required className={inputCls} />
+              <input autoFocus value={form.name} onChange={(e) => set("name", e.target.value)} required className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Client ID <span className="text-red-500">*</span></label>
@@ -122,6 +124,14 @@ export function ClientModal({ client, onClose, onSaved }: Props) {
                 {csms.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className={labelCls}>AE Owner <span className="text-gray-400 font-normal">(optional)</span></label>
+            <select value={form.aeOwnerId} onChange={(e) => set("aeOwnerId", e.target.value)} className={inputCls}>
+              <option value="">None</option>
+              {aes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
           </div>
 
           <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide pt-1">Optional fields</p>

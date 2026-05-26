@@ -493,7 +493,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link href="/features" className="text-sm text-gray-400 hover:text-gray-600">← Features</Link>
+          <Link href="/features" className="text-sm text-gray-400 hover:text-gray-600">← Beta Features</Link>
           <h1 className="mt-1 text-2xl font-semibold text-gray-900">{feature.name}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-500">
             {isClosed ? (
@@ -642,7 +642,10 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                                 <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">overflow</span>
                               )}
                             </p>
-                            <p className="text-xs text-gray-400">CSM: {c?.csmOwner?.name}</p>
+                            <p className="text-xs text-gray-400">
+                              CSM: {c?.csmOwner?.name ?? "—"}
+                              {c?.aeOwner && <span className="ml-2">· AE: {c.aeOwner.name}</span>}
+                            </p>
                           </div>
                         </button>
                       </td>
@@ -778,7 +781,10 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                               <HealthDot health={c?.accountHealth ?? "green"} />
                               <div>
                                 <p className="text-sm font-medium text-gray-900">{c?.name}</p>
-                                <p className="text-xs text-gray-400">CSM: {c?.csmOwner?.name}</p>
+                                <p className="text-xs text-gray-400">
+                                  CSM: {c?.csmOwner?.name ?? "—"}
+                                  {c?.aeOwner && <span className="ml-2">· AE: {c.aeOwner.name}</span>}
+                                </p>
                               </div>
                             </div>
                           </td>

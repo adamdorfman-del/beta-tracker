@@ -38,16 +38,20 @@ export interface Client {
   id: string;
   name: string;
   csmOwnerId: string;
+  aeOwnerId: string | null;
   tier: number;
   accountHealth: HealthStatus;
   segment: Segment | null;
   vertical: string | null;
+  primaryContactName: string | null;
+  primaryContactEmail: string | null;
   outreachLock: boolean;
   lastOutreachDate: string | null;
   notes: string | null;
   crmId: string | null;
   createdAt: string;
   csmOwner?: User;
+  aeOwner?: User | null;
   enrollments?: BetaEnrollment[];
 }
 
@@ -74,20 +78,33 @@ export interface BetaEnrollment {
   csmApprovedBy?: User;
 }
 
+export interface BatchFeature {
+  id: string;
+  name: string;
+  slug?: string | null;
+  status?: BetaStatus;
+  idealClientCriteria?: string | null;
+  targetTesterCount?: number;
+}
+
 export interface OutreachBatch {
   id: string;
   clientId: string;
   batchStatus: BatchStatus;
   sentAt: string | null;
   sentById: string | null;
+  senderId: string | null;
+  ccIds: string[];
   createdAt: string;
   client?: Client;
   sentBy?: User | null;
+  sender?: User | null;
+  ccUsers?: User[];
   enrollments?: Array<{
     batchId: string;
     enrollmentId: string;
     enrollment?: BetaEnrollment & {
-      feature?: { id: string; name: string };
+      feature?: BatchFeature;
       csmApprovedBy?: User | null;
     };
   }>;

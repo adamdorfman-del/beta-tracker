@@ -9,7 +9,7 @@ const VALID_SEGMENTS = ["Strategic", "Enterprise", "Commercial", "Professional",
 const VALID_HEALTH   = ["green", "yellow", "red"] as const;
 
 function validateClientBody(body: any, requireAll = true) {
-  const { name, crmId, csmOwnerId, segment, primaryContactName, primaryContactEmail,
+  const { name, crmId, csmOwnerId, aeOwnerId, segment, primaryContactName, primaryContactEmail,
     accountHealth, vertical, contractRenewalDate, productSubscriptions, lastOutreachDate, tier } = body ?? {};
   if (requireAll) {
     if (!name?.trim())               return { error: "Client Name is required." };
@@ -23,6 +23,7 @@ function validateClientBody(body: any, requireAll = true) {
       name: name?.trim(),
       crmId: crmId?.trim() || null,
       csmOwnerId: csmOwnerId?.trim(),
+      aeOwnerId: aeOwnerId?.trim() || null,
       segment: segment || null,
       primaryContactName: primaryContactName?.trim() || null,
       primaryContactEmail: primaryContactEmail?.trim()?.toLowerCase() || null,
@@ -91,6 +92,7 @@ router.get("/", async (req, res) => {
       name: clientsTable.name,
       crmId: clientsTable.crmId,
       csmOwnerId: clientsTable.csmOwnerId,
+      aeOwnerId: clientsTable.aeOwnerId,
       tier: clientsTable.tier,
       segment: clientsTable.segment,
       primaryContactName: clientsTable.primaryContactName,
@@ -112,14 +114,21 @@ router.get("/", async (req, res) => {
     const [{ value: total }] = await db.select({ value: count() }).from(clientsTable)
       .where(conditions.length ? and(...conditions) : undefined);
 
-    const csmIds = [...new Set(clients.map(c => c.csmOwnerId))];
-    const csms = csmIds.length > 0
+    const allOwnerIds = [...new Set([
+      ...clients.map(c => c.csmOwnerId),
+      ...clients.map(c => c.aeOwnerId).filter(Boolean) as string[],
+    ])];
+    const owners = allOwnerIds.length > 0
       ? await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
-          .from(usersTable).where(inArray(usersTable.id, csmIds))
+          .from(usersTable).where(inArray(usersTable.id, allOwnerIds))
       : [];
-    const csmMap = Object.fromEntries(csms.map(u => [u.id, u]));
+    const ownerMap = Object.fromEntries(owners.map(u => [u.id, u]));
 
-    const enriched = clients.map(c => ({ ...c, csmOwner: csmMap[c.csmOwnerId] ?? null }));
+    const enriched = clients.map(c => ({
+      ...c,
+      csmOwner: ownerMap[c.csmOwnerId] ?? null,
+      aeOwner: c.aeOwnerId ? (ownerMap[c.aeOwnerId] ?? null) : null,
+    }));
     return ok(res, { clients: enriched, total, skip, take });
   } catch (e) {
     req.log.error(e);
@@ -200,6 +209,11 @@ router.get("/:id", async (req, res) => {
     const [csmOwner] = await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
       .from(usersTable).where(eq(usersTable.id, client.csmOwnerId));
 
+    const aeOwner = client.aeOwnerId
+      ? (await db.select({ id: usersTable.id, name: usersTable.name, email: usersTable.email })
+          .from(usersTable).where(eq(usersTable.id, client.aeOwnerId)))[0] ?? null
+      : null;
+
     const enrollments = await db.select().from(betaEnrollmentsTable)
       .where(eq(betaEnrollmentsTable.clientId, id))
       .orderBy(desc(betaEnrollmentsTable.createdAt));
@@ -211,7 +225,7 @@ router.get("/:id", async (req, res) => {
     const featureMap = Object.fromEntries(features.map(f => [f.id, f]));
     const enrichedEnrollments = enrollments.map(e => ({ ...e, feature: featureMap[e.featureId] ?? null }));
 
-    return ok(res, { ...client, csmOwner, enrollments: enrichedEnrollments });
+    return ok(res, { ...client, csmOwner, aeOwner, enrollments: enrichedEnrollments });
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);
@@ -225,7 +239,7 @@ router.put("/:id", async (req, res) => {
   try {
     const update: any = { updatedAt: new Date() };
     const d = validated.data as any;
-    const fields = ["name","crmId","csmOwnerId","segment","primaryContactName","primaryContactEmail",
+    const fields = ["name","crmId","csmOwnerId","aeOwnerId","segment","primaryContactName","primaryContactEmail",
       "accountHealth","vertical","contractRenewalDate","productSubscriptions","lastOutreachDate","tier"];
     for (const f of fields) { if (req.body[f] !== undefined) update[f] = d[f]; }
     const [client] = await db.update(clientsTable).set(update).where(eq(clientsTable.id, req.params.id)).returning();

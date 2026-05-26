@@ -9,6 +9,7 @@ export const clientsTable = pgTable("clients", {
   name: text("name").notNull(),
   crmId: text("crm_id").unique(),
   csmOwnerId: text("csm_owner").notNull().references(() => usersTable.id),
+  aeOwnerId: text("ae_owner").references(() => usersTable.id),
   tier: integer("tier"),
   segment: segmentEnum("segment"),
   primaryContactName: text("primary_contact_name"),

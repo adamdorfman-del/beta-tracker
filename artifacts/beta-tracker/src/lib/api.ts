@@ -11,6 +11,7 @@ export async function apiFetch(path: string, options?: RequestInit) {
     const data = await res.json().catch(() => ({}));
     throw Object.assign(new Error(data.error ?? res.statusText), { status: res.status, data });
   }
+  if (res.status === 204) return {};
   return res.json();
 }
 
@@ -25,6 +26,7 @@ export const api = {
     update: (id: string, body: object) => apiFetch(`/features/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     close: (id: string, body: object) => apiFetch(`/features/${id}/close`, { method: "POST", body: JSON.stringify(body) }),
     clone: (id: string) => apiFetch(`/features/${id}/clone`, { method: "POST", body: JSON.stringify({}) }),
+    remove: (id: string) => apiFetch(`/features/${id}`, { method: "DELETE" }),
   },
   enrollments: {
     list: (params?: Record<string, string>) => {
@@ -56,6 +58,8 @@ export const api = {
       return apiFetch(`/batches${qs}`);
     },
     trigger: () => apiFetch("/batches/trigger", { method: "POST" }),
+    triggerForFeature: (featureId: string) => apiFetch(`/batches/trigger-for-feature/${featureId}`, { method: "POST" }),
+    update: (id: string, body: object) => apiFetch(`/batches/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     send: (id: string, body?: object) => apiFetch(`/batches/${id}/send`, { method: "POST", body: JSON.stringify(body ?? {}) }),
   },
   reports: {

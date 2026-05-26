@@ -51,11 +51,17 @@ router.get("/", async (req, res) => {
       userIds.length ? db.select().from(usersTable).where(inArray(usersTable.id, userIds)) : Promise.resolve([]),
     ]);
 
-    // Enrich clients with csmOwner
+    // Enrich clients with csmOwner and aeOwner
     const csmOwnerIds = [...new Set(enrichedClients.map(c => c.csmOwnerId))];
-    const csmOwners = csmOwnerIds.length ? await db.select().from(usersTable).where(inArray(usersTable.id, csmOwnerIds)) : [];
-    const csmOwnerMap = Object.fromEntries(csmOwners.map(u => [u.id, u]));
-    const clientMap = Object.fromEntries(enrichedClients.map(c => [c.id, { ...c, csmOwner: csmOwnerMap[c.csmOwnerId] ?? null }]));
+    const aeOwnerIds = [...new Set(enrichedClients.map(c => c.aeOwnerId).filter(Boolean) as string[])];
+    const allClientOwnerIds = [...new Set([...csmOwnerIds, ...aeOwnerIds])];
+    const clientOwners = allClientOwnerIds.length ? await db.select().from(usersTable).where(inArray(usersTable.id, allClientOwnerIds)) : [];
+    const clientOwnerMap = Object.fromEntries(clientOwners.map(u => [u.id, u]));
+    const clientMap = Object.fromEntries(enrichedClients.map(c => [c.id, {
+      ...c,
+      csmOwner: clientOwnerMap[c.csmOwnerId] ?? null,
+      aeOwner: c.aeOwnerId ? (clientOwnerMap[c.aeOwnerId] ?? null) : null,
+    }]));
     const featureMap = Object.fromEntries(enrichedFeatures.map(f => [f.id, f]));
     const userMap = Object.fromEntries(enrichedUsers.map(u => [u.id, u]));
 

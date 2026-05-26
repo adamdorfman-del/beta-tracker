@@ -8,7 +8,21 @@ import { NewFeatureModal } from "@/components/NewFeatureModal";
 import { useCurrentUser, canWrite } from "@/hooks/useCurrentUser";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
+function TrashIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
 const ALL_STATUSES: BetaStatus[] = ["draft", "in_progress", "complete"];
+
+const STATUS_LABELS: Record<BetaStatus, string> = {
+  draft:       "Draft",
+  in_progress: "In Progress",
+  complete:    "Complete",
+};
 const TAKE = 25;
 
 function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string; sortDir: "asc" | "desc" }) {
@@ -32,6 +46,9 @@ export default function FeaturesPage() {
   const [showNew, setShowNew] = useState(false);
   const [sortCol, setSortCol] = useState("");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [deleteTarget, setDeleteTarget] = useState<BetaFeature | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const pageRef = useRef(1);
 
   function loadPage(p: number) {
@@ -66,10 +83,32 @@ export default function FeaturesPage() {
 
   const sentinelRef = useInfiniteScroll(loadMore, !loading && features.length < total);
 
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    try {
+      await api.features.remove(deleteTarget.id);
+      setFeatures(prev => prev.filter(f => f.id !== deleteTarget.id));
+      setTotal(t => t - 1);
+      setDeleteTarget(null);
+      setToast(`"${deleteTarget.name}" was deleted.`);
+      setTimeout(() => setToast(null), 3500);
+    } catch (e: any) {
+      alert(e?.data?.error ?? "Could not delete feature.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 rounded-lg bg-gray-900 px-4 py-2.5 text-sm text-white shadow-lg">
+          {toast}
+        </div>
+      )}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">Features</h1>
+        <h1 className="text-2xl font-semibold text-gray-900">Beta Features</h1>
         {canWrite(currentUser) && (
           <button
             onClick={() => setShowNew(true)}
@@ -88,7 +127,7 @@ export default function FeaturesPage() {
         {ALL_STATUSES.map((s) => (
           <Link key={s} href={`/features?status=${s}`}
             className={`rounded-full px-3 py-1 text-xs font-medium border ${status === s ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}>
-            {s.replace("_", " ").replace(/^\w/, c => c.toUpperCase())}
+            {STATUS_LABELS[s]}
           </Link>
         ))}
       </div>
@@ -154,7 +193,18 @@ export default function FeaturesPage() {
                     <td className="px-4 py-3 hidden md:table-cell"><SlotFill enrolled={enrolled} outreach={outreach} filled={filled} target={f.targetTesterCount} /></td>
                     <td className="px-4 py-3 hidden xl:table-cell"><span className="text-sm text-gray-600">{f.ownerPm?.name ?? "—"}</span></td>
                     <td className="px-4 py-3 text-right">
-                      <Link href={`/features/${(f as any).slug ?? f.id}`} className="text-xs font-medium text-blue-600 hover:text-blue-800">View →</Link>
+                      <div className="flex items-center justify-end gap-3">
+                        <Link href={`/features/${(f as any).slug ?? f.id}`} className="text-xs font-medium text-blue-600 hover:text-blue-800">View →</Link>
+                        {canWrite(currentUser) && (
+                          <button
+                            onClick={() => setDeleteTarget(f)}
+                            className="text-red-400 hover:text-red-600"
+                            title="Delete feature"
+                          >
+                            <TrashIcon />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -168,6 +218,35 @@ export default function FeaturesPage() {
       {loadingMore && <div className="py-3 text-center text-sm text-gray-400">Loading more…</div>}
 
       {showNew && <NewFeatureModal onClose={() => setShowNew(false)} onCreated={() => { pageRef.current = 1; setPage(1); setFeatures([]); loadPage(1); }} />}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white shadow-xl">
+            <div className="px-6 py-5">
+              <h2 className="text-base font-semibold text-gray-900 mb-2">Delete "{deleteTarget.name}"?</h2>
+              <p className="text-sm text-gray-600">
+                This will permanently delete the beta and all associated enrollments, feedback, and outreach data. This cannot be undone.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

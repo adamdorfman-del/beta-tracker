@@ -349,6 +349,7 @@ export default function StakeholdersPage() {
                 <label className="block text-xs font-medium text-gray-700 mb-1">Full name <span className="text-red-500">*</span></label>
                 <input
                   required
+                  autoFocus
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}

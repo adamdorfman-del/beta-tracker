@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, primaryKey, json } from "drizzle-orm/pg-core";
 import { usersTable } from "./users.ts";
 import { clientsTable } from "./clients.ts";
 import { betaEnrollmentsTable } from "./enrollments.ts";
@@ -11,6 +11,8 @@ export const outreachBatchesTable = pgTable("outreach_batches", {
   batchStatus: batchStatusEnum("batch_status").notNull().default("pending"),
   sentAt: timestamp("sent_at"),
   sentById: text("sent_by").references(() => usersTable.id),
+  senderId: text("sender_id").references(() => usersTable.id),
+  ccIds: json("cc_ids").$type<string[]>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

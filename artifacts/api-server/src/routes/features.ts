@@ -1,7 +1,7 @@
 import { Router } from "express";
-import { db, betaFeaturesTable, usersTable, betaEnrollmentsTable, auditLogsTable } from "../lib/db";
+import { db, betaFeaturesTable, usersTable, betaEnrollmentsTable, auditLogsTable, feedbackTable, outreachBatchesTable, outreachBatchEnrollmentsTable } from "../lib/db";
 import { ok, err, parsePagination } from "../lib/helpers";
-import { eq, and, or, asc, desc, count, inArray, sql } from "drizzle-orm";
+import { eq, and, or, asc, desc, count, inArray, notExists, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { requireRole } from "../middlewares/requireRole";
 import { generateUniqueSlug } from "../lib/slugify";
@@ -123,14 +123,17 @@ router.get("/:id", async (req, res) => {
     const userMap = Object.fromEntries(users.map(u => [u.id, u]));
 
     const csmOwnerIds = [...new Set(clients.map(c => c.csmOwnerId))];
-    const csmOwners = csmOwnerIds.length > 0 ? await db.select().from(usersTable).where(inArray(usersTable.id, csmOwnerIds)) : [];
-    const csmOwnerMap = Object.fromEntries(csmOwners.map(u => [u.id, u]));
+    const aeOwnerIds = [...new Set(clients.map(c => c.aeOwnerId).filter(Boolean) as string[])];
+    const allClientOwnerIds = [...new Set([...csmOwnerIds, ...aeOwnerIds])];
+    const clientOwners = allClientOwnerIds.length > 0 ? await db.select().from(usersTable).where(inArray(usersTable.id, allClientOwnerIds)) : [];
+    const clientOwnerMap = Object.fromEntries(clientOwners.map(u => [u.id, u]));
 
     const enrichedEnrollments = enrollments.map(e => ({
       ...e,
       client: clientMap[e.clientId] ? {
         ...clientMap[e.clientId],
-        csmOwner: csmOwnerMap[clientMap[e.clientId].csmOwnerId] ?? null,
+        csmOwner: clientOwnerMap[clientMap[e.clientId].csmOwnerId] ?? null,
+        aeOwner: clientMap[e.clientId].aeOwnerId ? (clientOwnerMap[clientMap[e.clientId].aeOwnerId!] ?? null) : null,
       } : null,
       assignedBy: userMap[e.assignedById] ?? null,
       csmApprovedBy: e.csmApprovedById ? (userMap[e.csmApprovedById] ?? null) : null,
@@ -158,7 +161,7 @@ router.put("/:id", pmOrAdmin, async (req, res) => {
         update.slug = await generateUniqueSlug(body.name, existing.id);
       }
     }
-    if (body.status !== undefined) update.status = sql`${body.status}::text::beta_status`;
+    if (body.status !== undefined) update.status = body.status as any;
     if (body.idealClientCriteria !== undefined) update.idealClientCriteria = body.idealClientCriteria;
     if (body.outreachDeadline !== undefined) update.outreachDeadline = body.outreachDeadline;
     if (body.startDate !== undefined) update.startDate = body.startDate;
@@ -201,7 +204,7 @@ router.post("/:id/close", pmOrAdmin, async (req, res) => {
     }
 
     const [updated] = await db.update(betaFeaturesTable)
-      .set({ status: sql`'complete'::text::beta_status`, closedAt: new Date(), closeReason, closeNotes, updatedAt: new Date() })
+      .set({ status: "complete" as any, closedAt: new Date(), closeReason, closeNotes, updatedAt: new Date() })
       .where(eq(betaFeaturesTable.id, id)).returning();
 
     await db.insert(auditLogsTable).values({
@@ -245,6 +248,70 @@ router.post("/:id/clone", pmOrAdmin, async (req, res) => {
     });
 
     return ok(res, clone, 201);
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// DELETE /api/features/:id
+router.delete("/:id", pmOrAdmin, async (req, res) => {
+  try {
+    const feature = await findFeature(req.params.id);
+    if (!feature) return err(res, "Feature not found.", 404);
+    const id = feature.id;
+
+    // Get enrollment IDs for this feature
+    const enrollments = await db
+      .select({ id: betaEnrollmentsTable.id })
+      .from(betaEnrollmentsTable)
+      .where(eq(betaEnrollmentsTable.featureId, id));
+    const enrollmentIds = enrollments.map(e => e.id);
+
+    // Get batch IDs that will become orphaned after we remove their enrollment links
+    let orphanedBatchIds: string[] = [];
+    if (enrollmentIds.length > 0) {
+      const batchRows = await db
+        .selectDistinct({ batchId: outreachBatchEnrollmentsTable.batchId })
+        .from(outreachBatchEnrollmentsTable)
+        .where(inArray(outreachBatchEnrollmentsTable.enrollmentId, enrollmentIds));
+      orphanedBatchIds = batchRows.map(r => r.batchId);
+    }
+
+    // 1. feedback
+    await db.delete(feedbackTable).where(eq(feedbackTable.featureId, id));
+
+    // 2. outreach_batch_enrollments for these enrollments
+    if (enrollmentIds.length > 0) {
+      await db.delete(outreachBatchEnrollmentsTable)
+        .where(inArray(outreachBatchEnrollmentsTable.enrollmentId, enrollmentIds));
+    }
+
+    // 3. outreach_batches that are now empty
+    if (orphanedBatchIds.length > 0) {
+      await db.delete(outreachBatchesTable).where(
+        and(
+          inArray(outreachBatchesTable.id, orphanedBatchIds),
+          notExists(
+            db.select({ x: outreachBatchEnrollmentsTable.batchId })
+              .from(outreachBatchEnrollmentsTable)
+              .where(eq(outreachBatchEnrollmentsTable.batchId, outreachBatchesTable.id))
+          )
+        )
+      );
+    }
+
+    // 4. beta_enrollments
+    await db.delete(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.featureId, id));
+
+    // 5. audit_logs for this feature
+    await db.delete(auditLogsTable)
+      .where(and(eq(auditLogsTable.entityType, "BetaFeature"), eq(auditLogsTable.entityId, id)));
+
+    // 6. the feature itself
+    await db.delete(betaFeaturesTable).where(eq(betaFeaturesTable.id, id));
+
+    return res.status(204).end();
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);

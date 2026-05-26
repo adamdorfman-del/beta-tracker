@@ -2,7 +2,8 @@ import { pgTable, text, timestamp, integer, pgEnum, date } from "drizzle-orm/pg-
 import { usersTable } from "./users.ts";
 
 export const betaStatusEnum = pgEnum("beta_status", [
-  "draft", "recruiting", "outreach_sent", "full", "in_progress", "closing", "closed"
+  "draft", "in_progress", "complete",
+  "recruiting", "outreach_sent", "full", "closing", "closed",
 ]);
 
 export const closeReasonEnum = pgEnum("close_reason", [

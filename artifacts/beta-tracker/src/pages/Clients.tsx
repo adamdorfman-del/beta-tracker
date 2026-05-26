@@ -199,7 +199,7 @@ export default function ClientsPage() {
                   { key: "name",     label: "Client",   cls: "" },
                   { key: "segment",  label: "Segment",  cls: "hidden sm:table-cell" },
                   { key: "health",   label: "Health",   cls: "hidden md:table-cell" },
-                  { key: "csm",      label: "CSM",      cls: "hidden lg:table-cell" },
+                  { key: "csm",      label: "CSM / AE", cls: "hidden lg:table-cell" },
                   { key: "vertical", label: "Vertical", cls: "hidden xl:table-cell" },
                   { key: "betas",    label: "Betas",    cls: "hidden xl:table-cell" },
                 ] as const).map(({ key, label, cls }) => (
@@ -239,7 +239,8 @@ export default function ClientsPage() {
                       <HealthDot health={c.accountHealth} showLabel />
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell text-sm text-gray-600">
-                      {c.csmOwner?.name ?? "—"}
+                      <p>{c.csmOwner?.name ?? "—"}</p>
+                      {c.aeOwner && <p className="text-xs text-gray-400">AE: {c.aeOwner.name}</p>}
                     </td>
                     <td className="px-4 py-3 hidden xl:table-cell text-sm text-gray-600">
                       {c.vertical ?? <span className="text-gray-400">—</span>}
@@ -271,6 +272,13 @@ export default function ClientsPage() {
                               <p className="font-medium text-gray-600">Primary Contact</p>
                               <p>{c.primaryContactName}</p>
                               {c.primaryContactEmail && <p className="text-gray-400">{c.primaryContactEmail}</p>}
+                            </div>
+                          )}
+                          {c.aeOwner && (
+                            <div>
+                              <p className="font-medium text-gray-600">AE</p>
+                              <p>{c.aeOwner.name}</p>
+                              <p className="text-gray-400">{c.aeOwner.email}</p>
                             </div>
                           )}
                           {c.tier != null       && <div><p className="font-medium text-gray-600">Tier</p><p>T{c.tier}</p></div>}

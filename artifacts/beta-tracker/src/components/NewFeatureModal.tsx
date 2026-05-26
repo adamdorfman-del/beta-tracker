@@ -46,7 +46,7 @@ export function NewFeatureModal({ onClose, onCreated }: { onClose: () => void; o
         <form onSubmit={submit} className="space-y-3">
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Feature name *</label>
-            <input value={name} onChange={(e) => setName(e.target.value)}
+            <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400" />
           </div>
           <div className="grid grid-cols-2 gap-3">

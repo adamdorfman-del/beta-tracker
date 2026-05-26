@@ -104,7 +104,7 @@ export default function DashboardPage() {
   const avgDuration  = overview?.avgBetaDurationDays;
 
   const statCards = [
-    { label: "Total Features",    value: totalFeatures,                                    href: "/features" },
+    { label: "Total Beta Features", value: totalFeatures,                                   href: "/features" },
     { label: "Confirmed Testers", value: overview?.totalConfirmed ?? 0,                    href: "/features" },
     { label: "Outreach Sent",     value: overview?.totalOutreachSent ?? 0,                 href: "/features" },
     { label: "Avg Beta Duration", value: avgDuration != null ? `${avgDuration}d` : "—",    href: "/reports" },
