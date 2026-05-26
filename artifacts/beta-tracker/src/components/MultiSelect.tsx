@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
-export function MultiSelect({ label, options, selected, onChange, labelMap, className }: {
+export function MultiSelect({ label, options, groups, selected, onChange, labelMap, className }: {
   label: string;
-  options: string[];
+  options?: string[];
+  groups?: Array<{ label: string; options: string[] }>;
   selected: string[];
   onChange: (v: string[]) => void;
   labelMap?: Record<string, string>;
@@ -28,6 +29,8 @@ export function MultiSelect({ label, options, selected, onChange, labelMap, clas
     : selected.length === 1 ? displayLabel(selected[0])
     : `${label} (${selected.length})`;
 
+  const flatOptions = groups ? groups.flatMap(g => g.options) : (options ?? []);
+
   return (
     <div ref={ref} className={`relative ${className ?? ""}`}>
       <button
@@ -45,7 +48,23 @@ export function MultiSelect({ label, options, selected, onChange, labelMap, clas
       </button>
       {open && (
         <div className="absolute z-20 mt-1 min-w-full rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-          {options.map((opt) => (
+          {groups ? groups.map((group, gi) => (
+            <div key={group.label}>
+              {gi > 0 && <div className="mx-2 my-1 border-t border-gray-100" />}
+              <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{group.label}</p>
+              {group.options.map((opt) => (
+                <label key={opt} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(opt)}
+                    onChange={() => toggle(opt)}
+                    className="rounded border-gray-300 text-blue-600"
+                  />
+                  {displayLabel(opt)}
+                </label>
+              ))}
+            </div>
+          )) : flatOptions.map((opt) => (
             <label key={opt} className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50">
               <input
                 type="checkbox"

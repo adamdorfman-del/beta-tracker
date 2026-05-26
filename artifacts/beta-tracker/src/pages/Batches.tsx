@@ -257,7 +257,36 @@ function DetailPanel({
     (be) => be.enrollment?.feature?.id === feature.id,
   );
 
-  const ccOptions = users.map((u) => u.id).filter((id) => id !== patchedSenderId);
+  // Build assigned-team / others groups for From + CC
+  const assignedUsers: User[] = [];
+  const assignedIds = new Set<string>();
+  function addAssigned(u: User | null | undefined) {
+    if (u && !assignedIds.has(u.id)) { assignedIds.add(u.id); assignedUsers.push(u); }
+  }
+  addAssigned(feature.ownerPm);
+  addAssigned(feature.ownerPmm);
+  addAssigned(batch.client?.csmOwner);
+  addAssigned(batch.client?.aeOwner);
+
+  const otherUsers = users
+    .filter((u) => !assignedIds.has(u.id))
+    .sort((a, b) => {
+      const lastA = a.name.split(" ").pop() ?? a.name;
+      const lastB = b.name.split(" ").pop() ?? b.name;
+      return lastA.localeCompare(lastB);
+    });
+
+  // From dropdown groups (exclude current sender from Others only if they're already in Assigned)
+  const fromAssigned = assignedUsers;
+  const fromOthers = otherUsers;
+
+  // CC groups — exclude whoever is selected as sender
+  const ccAssigned = assignedUsers.filter((u) => u.id !== patchedSenderId);
+  const ccOthers = otherUsers.filter((u) => u.id !== patchedSenderId);
+  const ccGroups = [
+    ...(ccAssigned.length > 0 ? [{ label: "Assigned team", options: ccAssigned.map((u) => u.id) }] : []),
+    ...(ccOthers.length > 0 ? [{ label: "Others", options: ccOthers.map((u) => u.id) }] : []),
+  ];
 
   function openGmail() {
     const subject =
@@ -332,9 +361,20 @@ function DetailPanel({
             className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
           >
             <option value="">— select sender —</option>
-            {users.map((u) => (
-              <option key={u.id} value={u.id}>{userLabelMap[u.id]}</option>
-            ))}
+            {fromAssigned.length > 0 && (
+              <optgroup label="Assigned team">
+                {fromAssigned.map((u) => (
+                  <option key={u.id} value={u.id}>{userLabelMap[u.id] ?? u.name}</option>
+                ))}
+              </optgroup>
+            )}
+            {fromOthers.length > 0 && (
+              <optgroup label="Others">
+                {fromOthers.map((u) => (
+                  <option key={u.id} value={u.id}>{userLabelMap[u.id] ?? u.name}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
 
@@ -343,7 +383,7 @@ function DetailPanel({
           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">CC</label>
           <MultiSelect
             label="Add CC"
-            options={ccOptions}
+            groups={ccGroups}
             selected={patchedCcIds}
             onChange={onCcChange}
             labelMap={userLabelMap}

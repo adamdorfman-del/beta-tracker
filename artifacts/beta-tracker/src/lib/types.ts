@@ -85,6 +85,10 @@ export interface BatchFeature {
   status?: BetaStatus;
   idealClientCriteria?: string | null;
   targetTesterCount?: number;
+  ownerPmId?: string | null;
+  ownerPmmId?: string | null;
+  ownerPm?: User | null;
+  ownerPmm?: User | null;
 }
 
 export interface OutreachBatch {

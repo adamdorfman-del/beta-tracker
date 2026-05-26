@@ -25,16 +25,6 @@ router.get("/", async (req, res) => {
     const clients = clientIds.length > 0 ? await db.select().from(clientsTable).where(inArray(clientsTable.id, clientIds)) : [];
     const clientMap = Object.fromEntries(clients.map(c => [c.id, c]));
 
-    // Collect all user IDs: sentBy, sender, cc
-    const userIdSet = new Set<string>();
-    batches.forEach(b => {
-      if (b.sentById) userIdSet.add(b.sentById);
-      if (b.senderId) userIdSet.add(b.senderId);
-      (b.ccIds ?? []).forEach(id => userIdSet.add(id));
-    });
-    const allUsers = userIdSet.size > 0 ? await db.select().from(usersTable).where(inArray(usersTable.id, [...userIdSet])) : [];
-    const userMap = Object.fromEntries(allUsers.map(u => [u.id, u]));
-
     const batchIds = batches.map(b => b.id);
     const batchEntries = batchIds.length > 0 ? await db.select().from(outreachBatchEnrollmentsTable)
       .where(inArray(outreachBatchEnrollmentsTable.batchId, batchIds)) : [];
@@ -52,33 +42,65 @@ router.get("/", async (req, res) => {
       status: betaFeaturesTable.status,
       idealClientCriteria: betaFeaturesTable.idealClientCriteria,
       targetTesterCount: betaFeaturesTable.targetTesterCount,
+      ownerPmId: betaFeaturesTable.ownerPmId,
+      ownerPmmId: betaFeaturesTable.ownerPmmId,
     }).from(betaFeaturesTable).where(inArray(betaFeaturesTable.id, featureIds)) : [];
     const featureMap = Object.fromEntries(features.map(f => [f.id, f]));
 
-    const approvedByIds = [...new Set(enrollments.map(e => e.csmApprovedById).filter(Boolean) as string[])];
-    const approvedByUsers = approvedByIds.length > 0 ? await db.select().from(usersTable).where(inArray(usersTable.id, approvedByIds)) : [];
-    const approvedByMap = Object.fromEntries(approvedByUsers.map(u => [u.id, u]));
+    // Collect all user IDs in one pass
+    const userIdSet = new Set<string>();
+    batches.forEach(b => {
+      if (b.sentById) userIdSet.add(b.sentById);
+      if (b.senderId) userIdSet.add(b.senderId);
+      (b.ccIds ?? []).forEach(id => userIdSet.add(id));
+    });
+    clients.forEach(c => {
+      userIdSet.add(c.csmOwnerId);
+      if (c.aeOwnerId) userIdSet.add(c.aeOwnerId);
+    });
+    features.forEach(f => {
+      if (f.ownerPmId) userIdSet.add(f.ownerPmId);
+      if (f.ownerPmmId) userIdSet.add(f.ownerPmmId);
+    });
+    enrollments.forEach(e => {
+      if (e.csmApprovedById) userIdSet.add(e.csmApprovedById);
+    });
 
-    const enrichedBatches = batches.map(b => ({
-      ...b,
-      client: clientMap[b.clientId] ?? null,
-      sentBy: b.sentById ? (userMap[b.sentById] ?? null) : null,
-      sender: b.senderId ? (userMap[b.senderId] ?? null) : null,
-      ccUsers: (b.ccIds ?? []).map(id => userMap[id]).filter(Boolean),
-      enrollments: batchEntries
-        .filter(be => be.batchId === b.id)
-        .map(be => {
-          const e = enrollmentMap[be.enrollmentId];
-          return {
-            ...be,
-            enrollment: e ? {
-              ...e,
-              feature: featureMap[e.featureId] ?? null,
-              csmApprovedBy: e.csmApprovedById ? (approvedByMap[e.csmApprovedById] ?? null) : null,
-            } : null,
-          };
-        }),
-    }));
+    const allUsers = userIdSet.size > 0 ? await db.select().from(usersTable).where(inArray(usersTable.id, [...userIdSet])) : [];
+    const userMap = Object.fromEntries(allUsers.map(u => [u.id, u]));
+
+    const enrichedBatches = batches.map(b => {
+      const client = clientMap[b.clientId] ?? null;
+      return {
+        ...b,
+        client: client ? {
+          ...client,
+          csmOwner: client.csmOwnerId ? (userMap[client.csmOwnerId] ?? null) : null,
+          aeOwner: client.aeOwnerId ? (userMap[client.aeOwnerId] ?? null) : null,
+        } : null,
+        sentBy: b.sentById ? (userMap[b.sentById] ?? null) : null,
+        sender: b.senderId ? (userMap[b.senderId] ?? null) : null,
+        ccUsers: (b.ccIds ?? []).map(id => userMap[id]).filter(Boolean),
+        enrollments: batchEntries
+          .filter(be => be.batchId === b.id)
+          .map(be => {
+            const e = enrollmentMap[be.enrollmentId];
+            const f = e ? (featureMap[e.featureId] ?? null) : null;
+            return {
+              ...be,
+              enrollment: e ? {
+                ...e,
+                feature: f ? {
+                  ...f,
+                  ownerPm: f.ownerPmId ? (userMap[f.ownerPmId] ?? null) : null,
+                  ownerPmm: f.ownerPmmId ? (userMap[f.ownerPmmId] ?? null) : null,
+                } : null,
+                csmApprovedBy: e.csmApprovedById ? (userMap[e.csmApprovedById] ?? null) : null,
+              } : null,
+            };
+          }),
+      };
+    });
 
     return ok(res, { batches: enrichedBatches, total });
   } catch (e) {
