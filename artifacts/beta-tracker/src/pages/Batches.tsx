@@ -88,14 +88,16 @@ function DraftModal({
   const [draft, setDraft] = useState("");
   const [generating, setGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function generate() {
-    const key = (import.meta as any).env?.VITE_ANTHROPIC_API_KEY;
+    const key = import.meta.env.VITE_GEMINI_API_KEY;
     if (!key) {
-      alert("Set VITE_ANTHROPIC_API_KEY in your .env to enable AI drafts.");
+      setError("VITE_GEMINI_API_KEY is not set. Add it to .env and restart the dev server.");
       return;
     }
     setGenerating(true);
+    setError(null);
     try {
       const role = sender?.role ?? "pm";
       const toneNote =
@@ -129,26 +131,26 @@ Format:
 - End with a clear call to action to confirm participation
 - Do not use any placeholder brackets — use the actual names provided`;
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": key,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
-          "anthropic-dangerous-direct-browser-access": "true",
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            generationConfig: { maxOutputTokens: 1000 },
+          }),
         },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 1024,
-          messages: [{ role: "user", content: prompt }],
-        }),
-      });
+      );
       const data = await resp.json();
-      const text = data.content?.[0]?.text ?? "";
+      if (!resp.ok) {
+        throw new Error(data.error?.message ?? `Gemini error ${resp.status}`);
+      }
+      const text: string = data.candidates[0].content.parts[0].text ?? "";
       setDraft(text);
       onDraftSaved(text);
-    } catch {
-      alert("Failed to generate draft. Check VITE_ANTHROPIC_API_KEY and network access.");
+    } catch (e: any) {
+      setError(e.message ?? "Failed to generate draft. Check your Gemini API key.");
     } finally {
       setGenerating(false);
     }
@@ -178,6 +180,11 @@ Format:
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
           {!draft ? (
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm">
               <p className="font-medium text-gray-700 mb-2">Ready to generate</p>
