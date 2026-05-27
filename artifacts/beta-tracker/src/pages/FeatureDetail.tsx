@@ -526,19 +526,11 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
             )}
           </div>
         </div>
-        {canWrite(currentUser) && (
-          <div className="flex gap-2 flex-wrap">
-            {!isClosed && (
-              <button onClick={() => setEditOpen(true)}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                Edit
-              </button>
-            )}
-            <button onClick={clone}
-              className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
-              Clone as Template
-            </button>
-          </div>
+        {canWrite(currentUser) && !isClosed && (
+          <button onClick={() => setEditOpen(true)}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            Edit
+          </button>
         )}
       </div>
 
