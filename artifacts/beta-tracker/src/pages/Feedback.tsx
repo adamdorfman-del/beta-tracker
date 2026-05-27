@@ -273,10 +273,11 @@ export default function FeedbackPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <div className="h-1.5 w-20 rounded-full bg-gray-200 flex-shrink-0">
-                          <div className={`h-1.5 rounded-full ${rate >= 50 ? "bg-green-500" : "bg-red-400"}`}
-                            style={{ width: `${rate}%` }} />
+                          <div className="h-1.5 rounded-full"
+                            style={{ width: `${rate}%`, backgroundColor: rate >= 80 ? '#1D9E75' : rate >= 60 ? '#EF9F27' : '#E24B4A' }} />
                         </div>
-                        <span className={`text-xs font-medium tabular-nums ${rate >= 50 ? "text-green-700" : "text-red-600"}`}>
+                        <span className="text-xs font-medium tabular-nums"
+                          style={{ color: rate >= 80 ? '#1D9E75' : rate >= 60 ? '#EF9F27' : '#E24B4A' }}>
                           {rate}%
                         </span>
                       </div>

@@ -240,8 +240,7 @@ export default function DashboardPage() {
                   <tbody className="divide-y divide-gray-50">
                     {sentimentRows.map((f: any) => {
                       const pct = f.positiveRate !== null ? Math.round(f.positiveRate * 100) : null;
-                      const barCls = pct === null ? "" : pct >= 66 ? "bg-green-500" : pct >= 50 ? "bg-amber-400" : "bg-red-500";
-                      const pctCls = pct === null ? "text-gray-400" : pct >= 66 ? "text-green-700" : pct >= 50 ? "text-amber-700" : "text-red-700";
+                      const rateColor = pct === null ? undefined : pct >= 80 ? '#1D9E75' : pct >= 60 ? '#EF9F27' : '#E24B4A';
                       return (
                         <tr key={f.id} className="group">
                           <td className="py-2 pr-2 max-w-0">
@@ -256,9 +255,9 @@ export default function DashboardPage() {
                             ) : (
                               <div className="flex items-center gap-1.5">
                                 <div className="h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden shrink-0">
-                                  <div className={`h-full rounded-full ${barCls}`} style={{ width: `${pct}%` }} />
+                                  <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: rateColor }} />
                                 </div>
-                                <span className={`font-medium shrink-0 ${pctCls}`}>{pct}%</span>
+                                <span className="font-medium shrink-0" style={{ color: rateColor }}>{pct}%</span>
                               </div>
                             )}
                           </td>
