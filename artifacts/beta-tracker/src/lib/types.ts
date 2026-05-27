@@ -1,4 +1,4 @@
-export type BetaStatus = "draft" | "in_progress" | "complete";
+export type BetaStatus = "draft" | "recruiting" | "outreach_sent" | "in_progress" | "full" | "closing" | "complete" | "closed";
 export type TesterStatus = "nominated" | "csm_pending" | "csm_approved" | "outreach_sent" | "confirmed" | "active" | "completed" | "dropped" | "cancelled";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type BatchStatus = "pending" | "ready" | "sent";
