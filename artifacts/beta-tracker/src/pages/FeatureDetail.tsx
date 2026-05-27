@@ -287,8 +287,6 @@ function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSigna
     return () => clearTimeout(t);
   }, [query]);
 
-  // Single effect handles filter changes AND post-nomination refreshes (refreshSignal).
-  // All filter vars are deps so the closure is always fresh — no ref gymnastics for params.
   useEffect(() => {
     pageRef.current = 1;
     setClients([]);
@@ -310,7 +308,9 @@ function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSigna
       .catch(console.error)
       .finally(() => { if (!cancelled) setPageLoading(false); });
     return () => { cancelled = true; };
-  }, [debouncedQuery, filterHealth.join(","), filterSegment.join(","), filterVertical.join(","), refreshSignal]);
+    // refreshSignal intentionally excluded: nominatedRef already prevents re-appearance
+    // of added clients, so a full re-fetch on every add is unnecessary and resets scroll.
+  }, [debouncedQuery, filterHealth.join(","), filterSegment.join(","), filterVertical.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     api.clients.verticals().then((v: any) => setVerticals((v.verticals ?? []).sort())).catch(() => {});
@@ -346,7 +346,7 @@ function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSigna
       scrollRef.current.scrollTop = savedScrollRef.current;
       savedScrollRef.current = null;
     }
-  });
+  }, [clients]);
 
   async function nominate(clientId: string, force = false) {
     setResult(null); setPending(true);
