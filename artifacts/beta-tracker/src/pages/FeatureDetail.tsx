@@ -472,6 +472,11 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   const csmPending = pendingEnrollments.length;
   const isClosed = feature.status === "complete";
 
+  const fbSummary = (feature as any).feedbackSummary ?? { total: 0, positive: 0, negative: 0, neutral: 0, positiveRate: null };
+  const recentFeedback: any[] = (feature as any).recentFeedback ?? [];
+  const fbPct   = fbSummary.positiveRate !== null ? Math.round(fbSummary.positiveRate * 100) : null;
+  const fbColor = fbPct !== null ? (fbPct >= 80 ? '#1D9E75' : fbPct >= 60 ? '#EF9F27' : '#E24B4A') : undefined;
+
   const MANUAL_STATUSES = [
     { value: "draft",       label: "Draft" },
     { value: "in_progress", label: "In Progress" },
@@ -558,7 +563,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
         />
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {[
           { label: "Slots",          value: <SlotFill enrolled={enrolled} outreach={outreach} filled={filled} target={feature.targetTesterCount} /> },
           { label: "CSM Pending",    value: <span className={`text-2xl font-bold ${csmPending > 0 ? "text-amber-600" : "text-gray-900"}`}>{csmPending}</span> },
@@ -570,6 +575,69 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
             <div className="mt-1">{value}</div>
           </div>
         ))}
+        <div className="rounded-xl border border-gray-200 bg-white p-4">
+          <p className="text-xs text-gray-400 uppercase tracking-wide">Feedback</p>
+          <div className="mt-1">
+            {fbSummary.total === 0 ? (
+              <span className="text-sm text-gray-400">None yet</span>
+            ) : (
+              <div className="space-y-1">
+                <span className="text-2xl font-bold text-gray-900">{fbSummary.total}</span>
+                {fbPct !== null && (
+                  <div className="flex items-center gap-1.5">
+                    <div className="h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden">
+                      <div className="h-full rounded-full" style={{ width: `${fbPct}%`, backgroundColor: fbColor }} />
+                    </div>
+                    <span className="text-xs font-medium tabular-nums" style={{ color: fbColor }}>{fbPct}% positive</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Recent feedback */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+        <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
+          <h2 className="text-sm font-semibold text-gray-700">Recent feedback</h2>
+          {fbSummary.total > 0 && (
+            <Link href={`/feedback?feature_id=${feature.id}`} className="text-xs font-medium text-blue-600 hover:text-blue-800">
+              View all feedback →
+            </Link>
+          )}
+        </div>
+        {recentFeedback.length === 0 ? (
+          <p className="px-4 py-6 text-sm text-gray-400">No feedback logged yet for this beta.</p>
+        ) : (
+          <table className="min-w-full divide-y divide-gray-100">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Client</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Sentiment</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 hidden sm:table-cell">Feedback provider</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 hidden sm:table-cell">Date</th>
+                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 hidden md:table-cell">Notes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {recentFeedback.map((fb: any) => {
+                const parts = (fb.feedbackProviderName ?? "").trim().split(/\s+/);
+                const shortName = parts.length >= 2 ? `${parts[0][0]}. ${parts[parts.length - 1]}` : fb.feedbackProviderName;
+                const dateStr = new Date(fb.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+                return (
+                  <tr key={fb.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{fb.clientName}</td>
+                    <td className="px-4 py-2.5"><SentimentBadge sentiment={fb.sentiment} /></td>
+                    <td className="px-4 py-2.5 text-sm text-gray-500 hidden sm:table-cell">{shortName}</td>
+                    <td className="px-4 py-2.5 text-sm text-gray-500 hidden sm:table-cell">{dateStr}</td>
+                    <td className="px-4 py-2.5 text-sm text-gray-400 hidden md:table-cell max-w-xs truncate">{fb.notes ?? "—"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {feature.idealClientCriteria && (

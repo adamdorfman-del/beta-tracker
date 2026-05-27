@@ -8,6 +8,30 @@ import { NewFeatureModal } from "@/components/NewFeatureModal";
 import { useCurrentUser, canWrite } from "@/hooks/useCurrentUser";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 
+function feedbackRateColor(rate: number): string {
+  if (rate >= 0.8) return '#1D9E75';
+  if (rate >= 0.6) return '#EF9F27';
+  return '#E24B4A';
+}
+
+function FeedbackSummaryCell({ summary }: { summary: any }) {
+  if (!summary || summary.total === 0) {
+    return <span className="text-xs text-gray-300">No feedback yet</span>;
+  }
+  const rate = summary.positiveRate ?? 0;
+  const pct  = Math.round(rate * 100);
+  const color = feedbackRateColor(rate);
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-gray-500 tabular-nums w-14 shrink-0">{summary.total} resp.</span>
+      <div className="h-1.5 w-14 rounded-full bg-gray-100 overflow-hidden shrink-0">
+        <div className="h-full rounded-full" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+      <span className="text-xs font-medium tabular-nums" style={{ color }}>{pct}%</span>
+    </div>
+  );
+}
+
 function TrashIcon() {
   return (
     <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
@@ -144,10 +168,11 @@ export default function FeaturesPage() {
             <thead className="bg-gray-50">
               <tr>
                 {([
-                  { key: "name",   label: "Feature",  cls: "" },
-                  { key: "status", label: "Status",   cls: "hidden sm:table-cell" },
-                  { key: "slots",  label: "Slots",    cls: "hidden md:table-cell" },
-                  { key: "pm",     label: "Owner PM", cls: "hidden xl:table-cell" },
+                  { key: "name",     label: "Feature",   cls: "" },
+                  { key: "status",   label: "Status",    cls: "hidden sm:table-cell" },
+                  { key: "slots",    label: "Slots",     cls: "hidden md:table-cell" },
+                  { key: "feedback", label: "Feedback",  cls: "hidden lg:table-cell" },
+                  { key: "pm",       label: "Owner PM",  cls: "hidden xl:table-cell" },
                 ] as const).map(({ key, label, cls }) => (
                   <th key={key}
                     className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 cursor-pointer select-none hover:text-gray-700 ${cls}`}
@@ -199,6 +224,7 @@ export default function FeaturesPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell"><SlotFill enrolled={enrolled} outreach={outreach} filled={filled} target={f.targetTesterCount} /></td>
+                    <td className="px-4 py-3 hidden lg:table-cell"><FeedbackSummaryCell summary={(f as any).feedbackSummary} /></td>
                     <td className="px-4 py-3 hidden xl:table-cell"><span className="text-sm text-gray-600">{f.ownerPm?.name ?? "—"}</span></td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-3">

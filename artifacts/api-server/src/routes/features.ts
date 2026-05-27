@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, betaFeaturesTable, usersTable, betaEnrollmentsTable, auditLogsTable, feedbackTable, outreachBatchesTable, outreachBatchEnrollmentsTable } from "../lib/db";
+import { db, betaFeaturesTable, usersTable, betaEnrollmentsTable, auditLogsTable, feedbackTable, clientsTable, outreachBatchesTable, outreachBatchEnrollmentsTable } from "../lib/db";
 import { ok, err, parsePagination } from "../lib/helpers";
 import { eq, and, or, asc, desc, count, inArray, notExists, sql } from "drizzle-orm";
 import { logger } from "../lib/logger";
@@ -46,6 +46,10 @@ router.get("/", async (req, res) => {
       enrolledCount:          sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.tester_status IN ('confirmed','active','completed'))`,
       outreachCount:          sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.tester_status IN ('csm_approved','outreach_sent'))`,
       pendingApprovalCount:   sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.csm_approval_status = 'pending')`,
+      fbTotal:                sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id)`,
+      fbPositive:             sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id AND fb.sentiment = 'positive')`,
+      fbNegative:             sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id AND fb.sentiment = 'negative')`,
+      fbNeutral:              sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id AND fb.sentiment = 'neutral')`,
     }).from(betaFeaturesTable)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(orderExpr)
@@ -59,11 +63,24 @@ router.get("/", async (req, res) => {
     const owners = allUserIds.length > 0 ? await db.select().from(usersTable).where(inArray(usersTable.id, allUserIds)) : [];
     const ownerMap = Object.fromEntries(owners.map(u => [u.id, u]));
 
-    const enriched = features.map(f => ({
-      ...f,
-      ownerPm: ownerMap[f.ownerPmId] ?? null,
-      ownerPmm: ownerMap[f.ownerPmmId] ?? null,
-    }));
+    const enriched = features.map(f => {
+      const fbTotal    = Number(f.fbTotal    ?? 0);
+      const fbPositive = Number(f.fbPositive ?? 0);
+      const fbNegative = Number(f.fbNegative ?? 0);
+      const fbNeutral  = Number(f.fbNeutral  ?? 0);
+      return {
+        ...f,
+        ownerPm: ownerMap[f.ownerPmId] ?? null,
+        ownerPmm: ownerMap[f.ownerPmmId] ?? null,
+        feedbackSummary: {
+          total: fbTotal,
+          positive: fbPositive,
+          negative: fbNegative,
+          neutral: fbNeutral,
+          positiveRate: fbTotal > 0 ? fbPositive / fbTotal : null,
+        },
+      };
+    });
 
     return ok(res, { features: enriched, total, skip, take });
   } catch (e) {
@@ -113,7 +130,6 @@ router.get("/:id", async (req, res) => {
       .orderBy(desc(betaEnrollmentsTable.createdAt));
 
     // Enrich enrollments with client and assignedBy
-    const { clientsTable } = await import("../lib/db");
     const clientIds = [...new Set(enrollments.map(e => e.clientId))];
     const clients = clientIds.length > 0 ? await db.select().from(clientsTable).where(inArray(clientsTable.id, clientIds)) : [];
     const clientMap = Object.fromEntries(clients.map(c => [c.id, c]));
@@ -140,7 +156,40 @@ router.get("/:id", async (req, res) => {
       csmApprovedBy: e.csmApprovedById ? (userMap[e.csmApprovedById] ?? null) : null,
     }));
 
-    return ok(res, { ...feature, ownerPm, ownerPmm, enrollments: enrichedEnrollments });
+    // Feedback summary
+    const [fbRow] = await db.select({
+      total:    sql<number>`COUNT(*)`,
+      positive: sql<number>`SUM(CASE WHEN ${feedbackTable.sentiment} = 'positive' THEN 1 ELSE 0 END)`,
+      negative: sql<number>`SUM(CASE WHEN ${feedbackTable.sentiment} = 'negative' THEN 1 ELSE 0 END)`,
+      neutral:  sql<number>`SUM(CASE WHEN ${feedbackTable.sentiment} = 'neutral'  THEN 1 ELSE 0 END)`,
+    }).from(feedbackTable).where(eq(feedbackTable.featureId, feature.id));
+
+    const fbTotal    = Number(fbRow?.total    ?? 0);
+    const fbPositive = Number(fbRow?.positive ?? 0);
+    const feedbackSummary = {
+      total:        fbTotal,
+      positive:     fbPositive,
+      negative:     Number(fbRow?.negative ?? 0),
+      neutral:      Number(fbRow?.neutral  ?? 0),
+      positiveRate: fbTotal > 0 ? fbPositive / fbTotal : null,
+    };
+
+    // Recent feedback (last 5)
+    const recentFeedback = await db.select({
+      id:                   feedbackTable.id,
+      sentiment:            feedbackTable.sentiment,
+      notes:                feedbackTable.notes,
+      createdAt:            feedbackTable.createdAt,
+      clientName:           clientsTable.name,
+      feedbackProviderName: usersTable.name,
+    }).from(feedbackTable)
+      .innerJoin(clientsTable, eq(feedbackTable.clientId, clientsTable.id))
+      .innerJoin(usersTable, eq(feedbackTable.feedbackProviderId, usersTable.id))
+      .where(eq(feedbackTable.featureId, feature.id))
+      .orderBy(desc(feedbackTable.createdAt))
+      .limit(5);
+
+    return ok(res, { ...feature, ownerPm, ownerPmm, enrollments: enrichedEnrollments, feedbackSummary, recentFeedback });
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);
