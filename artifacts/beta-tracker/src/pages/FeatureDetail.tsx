@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { api } from "@/lib/api";
 import { BetaStatusBadge, TesterStatusBadge, ApprovalStatusBadge } from "@/components/StatusBadge";
@@ -271,6 +271,7 @@ function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSigna
   const [result, setResult] = useState<{ warning?: string; error?: string } | null>(null);
   const pageRef = useRef(1);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const savedScrollRef = useRef<number | null>(null);
   const enrolledRef = useRef(enrolledClientIds);
   enrolledRef.current = enrolledClientIds;
   // Tracks IDs nominated this session so they're excluded from fetches even before
@@ -340,11 +341,19 @@ function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSigna
 
   const sentinelRef = useInfiniteScroll(loadMore, !pageLoading && clients.length < total, scrollRef);
 
+  useLayoutEffect(() => {
+    if (savedScrollRef.current !== null && scrollRef.current) {
+      scrollRef.current.scrollTop = savedScrollRef.current;
+      savedScrollRef.current = null;
+    }
+  });
+
   async function nominate(clientId: string, force = false) {
     setResult(null); setPending(true);
     try {
       const data = await api.enrollments.create({ clientId, featureId, force });
       if (data.warning) setResult({ warning: data.warning });
+      savedScrollRef.current = scrollRef.current?.scrollTop ?? null;
       nominatedRef.current = new Set([...nominatedRef.current, clientId]);
       setClients(prev => prev.filter((c: any) => c.id !== clientId));
       onNominated();
