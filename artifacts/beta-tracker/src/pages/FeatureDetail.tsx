@@ -617,7 +617,9 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
             <tbody className="divide-y divide-gray-50">
               {[...activeEnrollments].sort((a, b) => {
                 if (!enrollSortCol) {
-                  return (a.csmApprovalStatus === "pending" ? 0 : 1) - (b.csmApprovalStatus === "pending" ? 0 : 1);
+                  const pendingDiff = (a.csmApprovalStatus === "pending" ? 0 : 1) - (b.csmApprovalStatus === "pending" ? 0 : 1);
+                  if (pendingDiff !== 0) return pendingDiff;
+                  return ((a.client as any)?.name ?? "").localeCompare((b.client as any)?.name ?? "");
                 }
                 const dir = enrollSortDir === "asc" ? 1 : -1;
                 const ac = a.client as any, bc = b.client as any;
