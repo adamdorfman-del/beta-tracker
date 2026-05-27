@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 const MAIN_NAV = [
@@ -41,6 +41,10 @@ export function NavSidebar() {
     }
   });
 
+  useEffect(() => {
+    if (adminActive) setOpen(true);
+  }, [adminActive]);
+
   function toggle() {
     const next = !open;
     setOpen(next);
@@ -72,11 +76,11 @@ export function NavSidebar() {
         onClick={toggle}
         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-gray-500 hover:bg-blue-50 hover:text-blue-700 transition-colors"
       >
-        <ChevronIcon open={open || adminActive} />
+        <ChevronIcon open={open} />
         Admin
       </button>
 
-      {(open || adminActive) && (
+      {open && (
         <div className="flex flex-col gap-0.5">
           {ADMIN_NAV.map(({ href, label }) => {
             const active = location === href || location.startsWith(href);

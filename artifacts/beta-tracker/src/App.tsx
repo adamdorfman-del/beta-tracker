@@ -296,6 +296,19 @@ function ClerkQueryCacheInvalidator() {
   return null;
 }
 
+function SignedInOrOut() {
+  return (
+    <>
+      <Show when="signed-out">
+        <Redirect to="/sign-in" />
+      </Show>
+      <Show when="signed-in">
+        <AppRoutes />
+      </Show>
+    </>
+  );
+}
+
 function ClerkProviderWithRoutes() {
   const [, setLocation] = useLocation();
 
@@ -312,18 +325,7 @@ function ClerkProviderWithRoutes() {
       <ClerkQueryCacheInvalidator />
       <Switch>
         <Route path="/sign-in/*?" component={SignInPage} />
-        <Route
-          component={() => (
-            <>
-              <Show when="signed-out">
-                <Redirect to="/sign-in" />
-              </Show>
-              <Show when="signed-in">
-                <AppRoutes />
-              </Show>
-            </>
-          )}
-        />
+        <Route component={SignedInOrOut} />
       </Switch>
     </ClerkProvider>
   );
