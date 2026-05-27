@@ -127,13 +127,13 @@ router.get("/", async (req, res) => {
       featureId:   feedbackTable.featureId,
       featureName: betaFeaturesTable.name,
       featureSlug: betaFeaturesTable.slug,
-      loggedById:  feedbackTable.loggedById,
-      loggedByName: usersTable.name,
+      feedbackProviderId:   feedbackTable.feedbackProviderId,
+      feedbackProviderName: usersTable.name,
     })
       .from(feedbackTable)
       .innerJoin(clientsTable, eq(feedbackTable.clientId, clientsTable.id))
       .innerJoin(betaFeaturesTable, eq(feedbackTable.featureId, betaFeaturesTable.id))
-      .innerJoin(usersTable, eq(feedbackTable.loggedById, usersTable.id))
+      .innerJoin(usersTable, eq(feedbackTable.feedbackProviderId, usersTable.id))
       .where(where)
       .orderBy(desc(feedbackTable.createdAt))
       .offset(skip).limit(take);
@@ -173,7 +173,7 @@ router.post("/", async (req, res) => {
       featureId,
       sentiment,
       notes: notes ?? null,
-      loggedById: currentUser.id,
+      feedbackProviderId: currentUser.id,
     }).returning();
 
     await db.insert(auditLogsTable).values({

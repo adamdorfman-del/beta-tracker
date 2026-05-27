@@ -11,7 +11,7 @@ export const feedbackTable = pgTable("feedback", {
   featureId: text("feature_id").notNull().references(() => betaFeaturesTable.id),
   sentiment: sentimentEnum("sentiment").notNull(),
   notes: text("notes"),
-  loggedById: text("logged_by").notNull().references(() => usersTable.id),
+  feedbackProviderId: text("feedback_provider_id").notNull().references(() => usersTable.id),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

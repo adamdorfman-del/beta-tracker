@@ -162,7 +162,7 @@ export default function FeedbackPage() {
       case "clientName":   return dir * (a.clientName ?? "").localeCompare(b.clientName ?? "");
       case "featureName":  return dir * (a.featureName ?? "").localeCompare(b.featureName ?? "");
       case "sentiment":    return dir * (a.sentiment ?? "").localeCompare(b.sentiment ?? "");
-      case "loggedByName": return dir * (a.loggedByName ?? "").localeCompare(b.loggedByName ?? "");
+      case "feedbackProviderName": return dir * (a.feedbackProviderName ?? "").localeCompare(b.feedbackProviderName ?? "");
       case "createdAt":    return dir * (new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
       default:             return 0;
     }
@@ -306,7 +306,7 @@ export default function FeedbackPage() {
                   { key: "clientName",   label: "Client",     cls: "" },
                   { key: "featureName",  label: "Feature",    cls: "" },
                   { key: "sentiment",    label: "Sentiment",  cls: "" },
-                  { key: "loggedByName", label: "Logged by",  cls: "hidden sm:table-cell" },
+                  { key: "feedbackProviderName", label: "Feedback provider", cls: "hidden sm:table-cell" },
                   { key: "createdAt",    label: "Date",       cls: "hidden sm:table-cell" },
                   { key: "notes",        label: "Notes",      cls: "hidden lg:table-cell" },
                 ] as const).map(({ key, label, cls }) => (
@@ -332,7 +332,7 @@ export default function FeedbackPage() {
                       </Link>
                     </td>
                     <td className="px-4 py-3"><SentimentBadge sentiment={f.sentiment} /></td>
-                    <td className="px-4 py-3 text-sm text-gray-500 hidden sm:table-cell">{shortName(f.loggedByName)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 hidden sm:table-cell">{shortName(f.feedbackProviderName)}</td>
                     <td className="px-4 py-3 text-sm text-gray-500 hidden sm:table-cell">{dateStr}</td>
                     <td className="px-4 py-3 text-sm text-gray-400 hidden lg:table-cell max-w-xs truncate">{f.notes ?? "—"}</td>
                   </tr>

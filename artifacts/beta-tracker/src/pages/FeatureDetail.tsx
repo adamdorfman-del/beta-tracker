@@ -217,7 +217,7 @@ function EnrollmentFeedback({ clientId, featureId }: { clientId: string; feature
                 {fb.notes || <span className="italic text-gray-400">No notes</span>}
               </span>
               <span className="flex-shrink-0 text-gray-400">
-                {fb.loggedByName} · {new Date(fb.createdAt).toLocaleDateString()}
+                {fb.feedbackProviderName} · {new Date(fb.createdAt).toLocaleDateString()}
               </span>
             </div>
           ))}
