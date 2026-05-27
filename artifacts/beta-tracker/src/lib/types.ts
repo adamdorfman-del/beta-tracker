@@ -26,6 +26,7 @@ export interface BetaFeature {
   closeReason: CloseReason | null;
   closeNotes: string | null;
   idealClientCriteria: string | null;
+  betaGoal: string | null;
   outreachDeadline: string;
   clonedFromId: string | null;
   createdAt: string;
@@ -84,6 +85,7 @@ export interface BatchFeature {
   slug?: string | null;
   status?: BetaStatus;
   idealClientCriteria?: string | null;
+  betaGoal?: string | null;
   targetTesterCount?: number;
   ownerPmId?: string | null;
   ownerPmmId?: string | null;

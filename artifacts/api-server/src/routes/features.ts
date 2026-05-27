@@ -75,7 +75,7 @@ router.get("/", async (req, res) => {
 // POST /api/features
 router.post("/", pmOrAdmin, async (req, res) => {
   try {
-    const { name, ownerPmId, ownerPmmId, startDate, outreachDeadline, idealClientCriteria, targetTesterCount, jiraEpicLink } = req.body;
+    const { name, ownerPmId, ownerPmmId, startDate, outreachDeadline, idealClientCriteria, betaGoal, targetTesterCount, jiraEpicLink } = req.body;
     if (!name || !ownerPmId || !ownerPmmId || !startDate || !outreachDeadline || !jiraEpicLink) {
       return err(res, "name, ownerPmId, ownerPmmId, startDate, outreachDeadline, and jiraEpicLink are required.");
     }
@@ -85,6 +85,7 @@ router.post("/", pmOrAdmin, async (req, res) => {
       startDate,
       outreachDeadline,
       idealClientCriteria,
+      betaGoal,
       jiraEpicLink,
       slug,
       targetTesterCount: targetTesterCount ?? 15,
@@ -163,6 +164,7 @@ router.put("/:id", pmOrAdmin, async (req, res) => {
     }
     if (body.status !== undefined) update.status = body.status as any;
     if (body.idealClientCriteria !== undefined) update.idealClientCriteria = body.idealClientCriteria;
+    if (body.betaGoal !== undefined) update.betaGoal = body.betaGoal;
     if (body.outreachDeadline !== undefined) update.outreachDeadline = body.outreachDeadline;
     if (body.startDate !== undefined) update.startDate = body.startDate;
     if (body.targetTesterCount !== undefined) update.targetTesterCount = body.targetTesterCount;

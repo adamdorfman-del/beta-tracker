@@ -179,6 +179,32 @@ function Spinner() {
   );
 }
 
+function AuthenticatedLayout() {
+  return (
+    <AppLayout>
+      <Switch>
+        <Route path="/" component={() => <Redirect to="/dashboard" />} />
+        <Route path="/dashboard" component={DashboardPage} />
+        <Route path="/features" component={FeaturesPage} />
+        <Route path="/features/:id" component={FeatureDetailPage} />
+        <Route path="/clients" component={ClientsPage} />
+        <Route path="/approvals" component={() => <Redirect to="/features" />} />
+        <Route path="/batches" component={BatchesPage} />
+        <Route path="/feedback" component={FeedbackPage} />
+        <Route path="/reports" component={ReportsPage} />
+        <Route path="/stakeholders" component={StakeholdersPage} />
+        <Route
+          component={() => (
+            <div className="py-16 text-center">
+              <h1 className="text-2xl font-semibold text-gray-900">Page not found</h1>
+            </div>
+          )}
+        />
+      </Switch>
+    </AppLayout>
+  );
+}
+
 function AppRoutes() {
   const { user, isLoaded } = useUser();
   const [location, navigate] = useLocation();
@@ -244,29 +270,7 @@ function AppRoutes() {
   return (
     <Switch>
       <Route path="/reauth" component={ReauthPage} />
-      <Route component={() => (
-        <AppLayout>
-          <Switch>
-            <Route path="/" component={() => <Redirect to="/dashboard" />} />
-            <Route path="/dashboard" component={DashboardPage} />
-            <Route path="/features" component={FeaturesPage} />
-            <Route path="/features/:id" component={FeatureDetailPage} />
-            <Route path="/clients" component={ClientsPage} />
-            <Route path="/approvals" component={() => <Redirect to="/features" />} />
-            <Route path="/batches" component={BatchesPage} />
-            <Route path="/feedback" component={FeedbackPage} />
-            <Route path="/reports" component={ReportsPage} />
-            <Route path="/stakeholders" component={StakeholdersPage} />
-            <Route
-              component={() => (
-                <div className="py-16 text-center">
-                  <h1 className="text-2xl font-semibold text-gray-900">Page not found</h1>
-                </div>
-              )}
-            />
-          </Switch>
-        </AppLayout>
-      )} />
+      <Route component={AuthenticatedLayout} />
     </Switch>
   );
 }

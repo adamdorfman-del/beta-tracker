@@ -6,6 +6,7 @@ import { generateUniqueSlug } from "./lib/slugify";
 
 async function runStartupMigrations() {
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_auth_at TIMESTAMP`);
+  await db.execute(sql`ALTER TABLE beta_features ADD COLUMN IF NOT EXISTS beta_goal TEXT`);
   await db.execute(sql`ALTER TABLE beta_features ADD COLUMN IF NOT EXISTS slug TEXT`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS beta_features_slug_unique ON beta_features (slug)`);
 

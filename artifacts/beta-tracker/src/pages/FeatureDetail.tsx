@@ -577,6 +577,12 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
         </div>
       )}
 
+      <div className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800">
+        {feature.betaGoal
+          ? <><strong>Beta goal:</strong> {feature.betaGoal}</>
+          : <span className="text-gray-400">No beta goal set — edit this feature to add one</span>}
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-4">
         <div className="lg:col-span-3 space-y-4">
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">

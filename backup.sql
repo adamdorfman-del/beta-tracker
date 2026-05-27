@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict RVZCDnHtHohRY1e3IM1yNtKtaLWn1bMKOfXDhCyzP7qpWILoM8OsFjj2UYTgdJu
+\restrict 8pvh0SYJBkTn8x8beovzgDmRxMmJDGCyVQVujrHNvq4qJYkLwoa95eqhNHLY8JC
 
 -- Dumped from database version 15.17
 -- Dumped by pg_dump version 18.4
@@ -93,6 +93,17 @@ CREATE TYPE public.segment AS ENUM (
 
 
 --
+-- Name: sentiment; Type: TYPE; Schema: public; Owner: -
+--
+
+CREATE TYPE public.sentiment AS ENUM (
+    'positive',
+    'neutral',
+    'negative'
+);
+
+
+--
 -- Name: tester_status; Type: TYPE; Schema: public; Owner: -
 --
 
@@ -117,7 +128,8 @@ CREATE TYPE public.user_role AS ENUM (
     'pm',
     'pmm',
     'csm',
-    'admin'
+    'admin',
+    'ae'
 );
 
 
@@ -177,7 +189,7 @@ CREATE TABLE public.beta_features (
     owner_pm text NOT NULL,
     owner_pmm text NOT NULL,
     target_tester_count integer DEFAULT 15 NOT NULL,
-    status text[] DEFAULT ARRAY['draft'::text] NOT NULL,
+    status public.beta_status DEFAULT 'draft'::public.beta_status NOT NULL,
     start_date date NOT NULL,
     closed_at timestamp without time zone,
     close_reason public.close_reason,
@@ -187,7 +199,9 @@ CREATE TABLE public.beta_features (
     cloned_from text,
     created_at timestamp without time zone DEFAULT now() NOT NULL,
     updated_at timestamp without time zone DEFAULT now() NOT NULL,
-    jira_epic_link text DEFAULT ''::text NOT NULL
+    jira_epic_link text DEFAULT ''::text NOT NULL,
+    slug text,
+    previous_slug text
 );
 
 
@@ -213,6 +227,21 @@ CREATE TABLE public.clients (
     vertical text,
     contract_renewal_date date,
     product_subscriptions text
+);
+
+
+--
+-- Name: feedback; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.feedback (
+    id text NOT NULL,
+    client_id text NOT NULL,
+    feature_id text NOT NULL,
+    sentiment public.sentiment NOT NULL,
+    notes text,
+    logged_by text NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
 );
 
 
@@ -264,6 +293,19 @@ COPY public.audit_logs (id, entity_type, entity_id, action, changed_by, prior_st
 75646732-62d4-4f97-857f-692d8692ad6e	BetaEnrollment	42e80b83-47fa-40f2-a992-dc228a614187	nominated	004df477-84b3-4aba-b191-1bde5deb1606	\N	{"id":"42e80b83-47fa-40f2-a992-dc228a614187","clientId":"0442dc39-1a7a-4430-bd50-972236198b8f","featureId":"d9175740-c9e7-4245-aee5-b21e6bcc6edb","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-17T19:58:53.393Z","updatedAt":"2026-05-17T19:58:53.393Z"}	2026-05-17 19:58:53.477669
 1a94b53a-d92f-421c-ae17-ed65f67c3b53	BetaEnrollment	77625255-d2a1-40ea-b200-6677558f0256	nominated	004df477-84b3-4aba-b191-1bde5deb1606	\N	{"id":"77625255-d2a1-40ea-b200-6677558f0256","clientId":"704f3226-4c5d-4269-a746-d5a648fb037a","featureId":"a9da113e-8d77-4c2e-8aff-a4b1d14b2f42","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-18T23:08:21.025Z","updatedAt":"2026-05-18T23:08:21.025Z"}	2026-05-18 23:08:21.061345
 8c771ab6-514c-4561-a433-a29ab9c026ed	BetaEnrollment	84fab1c7-e39e-4947-b3a1-625a1f0a7b22	nominated	004df477-84b3-4aba-b191-1bde5deb1606	\N	{"id":"84fab1c7-e39e-4947-b3a1-625a1f0a7b22","clientId":"37aa9a9a-5d84-4cf6-88e3-3f61938f6246","featureId":"d9175740-c9e7-4245-aee5-b21e6bcc6edb","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-19T13:52:49.615Z","updatedAt":"2026-05-19T13:52:49.615Z"}	2026-05-19 13:52:49.654035
+d8069a3b-0fc5-49c7-a0d8-91d03df0fcbb	BetaEnrollment	77625255-d2a1-40ea-b200-6677558f0256	csm_approved	004df477-84b3-4aba-b191-1bde5deb1606	{"id":"77625255-d2a1-40ea-b200-6677558f0256","clientId":"704f3226-4c5d-4269-a746-d5a648fb037a","featureId":"a9da113e-8d77-4c2e-8aff-a4b1d14b2f42","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-18T23:08:21.025Z","updatedAt":"2026-05-18T23:08:21.025Z"}	{"id":"77625255-d2a1-40ea-b200-6677558f0256","clientId":"704f3226-4c5d-4269-a746-d5a648fb037a","featureId":"a9da113e-8d77-4c2e-8aff-a4b1d14b2f42","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"approved","csmApprovedById":"004df477-84b3-4aba-b191-1bde5deb1606","csmApprovedAt":"2026-05-23T18:21:13.629Z","csmRejectionReason":null,"testerStatus":"csm_approved","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-18T23:08:21.025Z","updatedAt":"2026-05-23T18:21:13.629Z"}	2026-05-23 18:21:13.64395
+981104e5-4cb8-4f55-a3bb-735840abc1a5	BetaEnrollment	84fab1c7-e39e-4947-b3a1-625a1f0a7b22	csm_approved	004df477-84b3-4aba-b191-1bde5deb1606	{"id":"84fab1c7-e39e-4947-b3a1-625a1f0a7b22","clientId":"37aa9a9a-5d84-4cf6-88e3-3f61938f6246","featureId":"d9175740-c9e7-4245-aee5-b21e6bcc6edb","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-19T13:52:49.615Z","updatedAt":"2026-05-19T13:52:49.615Z"}	{"id":"84fab1c7-e39e-4947-b3a1-625a1f0a7b22","clientId":"37aa9a9a-5d84-4cf6-88e3-3f61938f6246","featureId":"d9175740-c9e7-4245-aee5-b21e6bcc6edb","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"approved","csmApprovedById":"004df477-84b3-4aba-b191-1bde5deb1606","csmApprovedAt":"2026-05-24T16:58:58.367Z","csmRejectionReason":null,"testerStatus":"csm_approved","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-19T13:52:49.615Z","updatedAt":"2026-05-24T16:58:58.367Z"}	2026-05-24 16:58:58.37732
+612218c7-eca9-4eb5-9a69-b34d4ec00ee3	BetaEnrollment	5b4308a3-587a-41c9-9b39-e265a5699c91	nominated	004df477-84b3-4aba-b191-1bde5deb1606	\N	{"id":"5b4308a3-587a-41c9-9b39-e265a5699c91","clientId":"ec222637-64f4-4b27-8ac2-dd0f2a553c75","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:28.724Z","updatedAt":"2026-05-26T18:06:28.724Z"}	2026-05-26 18:06:28.731936
+78ed57d6-fe3a-4575-bac5-558e5c2c36ef	BetaEnrollment	ff513f77-9e36-4561-9e6c-5b68f85b73d4	nominated	004df477-84b3-4aba-b191-1bde5deb1606	\N	{"id":"ff513f77-9e36-4561-9e6c-5b68f85b73d4","clientId":"471f1f31-7938-4078-b5d5-cf1e5a9526ec","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:31.264Z","updatedAt":"2026-05-26T18:06:31.264Z"}	2026-05-26 18:06:31.269669
+c016cef6-e174-454c-b5f5-ced07fa73645	BetaEnrollment	1f927882-a5a1-471d-a00a-e21b8bab0a20	nominated	004df477-84b3-4aba-b191-1bde5deb1606	\N	{"id":"1f927882-a5a1-471d-a00a-e21b8bab0a20","clientId":"37aa9a9a-5d84-4cf6-88e3-3f61938f6246","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:35.859Z","updatedAt":"2026-05-26T18:06:35.859Z"}	2026-05-26 18:06:35.863737
+b4d21e97-ddce-4743-b77c-f7bab9cb80e7	BetaEnrollment	fc873689-e3ed-4794-a2bc-4ee196b7492e	nominated	004df477-84b3-4aba-b191-1bde5deb1606	\N	{"id":"fc873689-e3ed-4794-a2bc-4ee196b7492e","clientId":"e47eeb20-d797-4389-b892-42b8929c9260","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:37.105Z","updatedAt":"2026-05-26T18:06:37.105Z"}	2026-05-26 18:06:37.108949
+46c1b703-b6a9-40ea-b8e1-f66b471c9950	BetaEnrollment	7a5e6045-eb55-45a3-8aaa-fd36af87bbb7	nominated	004df477-84b3-4aba-b191-1bde5deb1606	\N	{"id":"7a5e6045-eb55-45a3-8aaa-fd36af87bbb7","clientId":"1c3dd9b2-b399-40fa-b215-d6e8908b3588","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:40.923Z","updatedAt":"2026-05-26T18:06:40.923Z"}	2026-05-26 18:06:40.928309
+b44736ac-64d3-46e3-9b7a-4657c541420d	BetaEnrollment	c7b8baa9-181a-4d5e-91a7-dd91b12a5482	nominated	004df477-84b3-4aba-b191-1bde5deb1606	\N	{"id":"c7b8baa9-181a-4d5e-91a7-dd91b12a5482","clientId":"99fc72b8-3f7e-484a-916f-27968259ec30","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:43.518Z","updatedAt":"2026-05-26T18:06:43.518Z"}	2026-05-26 18:06:43.52299
+4c68c27e-76e7-4769-b292-04614f7e463b	BetaEnrollment	c7b8baa9-181a-4d5e-91a7-dd91b12a5482	csm_approved	004df477-84b3-4aba-b191-1bde5deb1606	{"id":"c7b8baa9-181a-4d5e-91a7-dd91b12a5482","clientId":"99fc72b8-3f7e-484a-916f-27968259ec30","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:43.518Z","updatedAt":"2026-05-26T18:06:43.518Z"}	{"id":"c7b8baa9-181a-4d5e-91a7-dd91b12a5482","clientId":"99fc72b8-3f7e-484a-916f-27968259ec30","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"approved","csmApprovedById":"004df477-84b3-4aba-b191-1bde5deb1606","csmApprovedAt":"2026-05-26T18:06:49.933Z","csmRejectionReason":null,"testerStatus":"csm_approved","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:43.518Z","updatedAt":"2026-05-26T18:06:49.933Z"}	2026-05-26 18:06:49.938102
+0e683f96-b778-4372-bfdf-93cc30105d17	BetaEnrollment	fc873689-e3ed-4794-a2bc-4ee196b7492e	csm_approved	004df477-84b3-4aba-b191-1bde5deb1606	{"id":"fc873689-e3ed-4794-a2bc-4ee196b7492e","clientId":"e47eeb20-d797-4389-b892-42b8929c9260","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:37.105Z","updatedAt":"2026-05-26T18:06:37.105Z"}	{"id":"fc873689-e3ed-4794-a2bc-4ee196b7492e","clientId":"e47eeb20-d797-4389-b892-42b8929c9260","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"approved","csmApprovedById":"004df477-84b3-4aba-b191-1bde5deb1606","csmApprovedAt":"2026-05-26T18:06:51.299Z","csmRejectionReason":null,"testerStatus":"csm_approved","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:37.105Z","updatedAt":"2026-05-26T18:06:51.299Z"}	2026-05-26 18:06:51.304338
+250c427e-c4b0-427f-be0c-cc280d40b2bd	BetaEnrollment	ff513f77-9e36-4561-9e6c-5b68f85b73d4	csm_approved	004df477-84b3-4aba-b191-1bde5deb1606	{"id":"ff513f77-9e36-4561-9e6c-5b68f85b73d4","clientId":"471f1f31-7938-4078-b5d5-cf1e5a9526ec","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:31.264Z","updatedAt":"2026-05-26T18:06:31.264Z"}	{"id":"ff513f77-9e36-4561-9e6c-5b68f85b73d4","clientId":"471f1f31-7938-4078-b5d5-cf1e5a9526ec","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"approved","csmApprovedById":"004df477-84b3-4aba-b191-1bde5deb1606","csmApprovedAt":"2026-05-26T18:06:52.254Z","csmRejectionReason":null,"testerStatus":"csm_approved","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:31.264Z","updatedAt":"2026-05-26T18:06:52.254Z"}	2026-05-26 18:06:52.259176
+6641360e-b21e-4f2a-bf50-74876138cd7f	BetaEnrollment	7a5e6045-eb55-45a3-8aaa-fd36af87bbb7	csm_approved	004df477-84b3-4aba-b191-1bde5deb1606	{"id":"7a5e6045-eb55-45a3-8aaa-fd36af87bbb7","clientId":"1c3dd9b2-b399-40fa-b215-d6e8908b3588","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:40.923Z","updatedAt":"2026-05-26T18:06:40.923Z"}	{"id":"7a5e6045-eb55-45a3-8aaa-fd36af87bbb7","clientId":"1c3dd9b2-b399-40fa-b215-d6e8908b3588","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"approved","csmApprovedById":"004df477-84b3-4aba-b191-1bde5deb1606","csmApprovedAt":"2026-05-26T18:06:52.826Z","csmRejectionReason":null,"testerStatus":"csm_approved","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:40.923Z","updatedAt":"2026-05-26T18:06:52.826Z"}	2026-05-26 18:06:52.83119
+c3892da2-1f0c-4c5c-99fe-f1ce8b7009ff	BetaEnrollment	5b4308a3-587a-41c9-9b39-e265a5699c91	csm_approved	004df477-84b3-4aba-b191-1bde5deb1606	{"id":"5b4308a3-587a-41c9-9b39-e265a5699c91","clientId":"ec222637-64f4-4b27-8ac2-dd0f2a553c75","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"pending","csmApprovedById":null,"csmApprovedAt":null,"csmRejectionReason":null,"testerStatus":"nominated","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:28.724Z","updatedAt":"2026-05-26T18:06:28.724Z"}	{"id":"5b4308a3-587a-41c9-9b39-e265a5699c91","clientId":"ec222637-64f4-4b27-8ac2-dd0f2a553c75","featureId":"11001aa3-bdd4-4f13-95e7-c7d02fc20bba","assignedById":"004df477-84b3-4aba-b191-1bde5deb1606","isOverflow":false,"csmApprovalStatus":"approved","csmApprovedById":"004df477-84b3-4aba-b191-1bde5deb1606","csmApprovedAt":"2026-05-26T18:06:53.905Z","csmRejectionReason":null,"testerStatus":"csm_approved","outreachSentAt":null,"confirmedAt":null,"completedAt":null,"droppedAt":null,"dropReason":null,"feedbackSubmitted":false,"createdAt":"2026-05-26T18:06:28.724Z","updatedAt":"2026-05-26T18:06:53.905Z"}	2026-05-26 18:06:53.909829
 \.
 
 
@@ -273,8 +315,14 @@ COPY public.audit_logs (id, entity_type, entity_id, action, changed_by, prior_st
 
 COPY public.beta_enrollments (id, client_id, feature_id, assigned_by, is_overflow, csm_approval_status, csm_approved_by, csm_approved_at, csm_rejection_reason, tester_status, outreach_sent_at, confirmed_at, completed_at, dropped_at, drop_reason, feedback_submitted, created_at, updated_at) FROM stdin;
 42e80b83-47fa-40f2-a992-dc228a614187	0442dc39-1a7a-4430-bd50-972236198b8f	d9175740-c9e7-4245-aee5-b21e6bcc6edb	004df477-84b3-4aba-b191-1bde5deb1606	f	pending	\N	\N	\N	nominated	\N	\N	\N	\N	\N	f	2026-05-17 19:58:53.393576	2026-05-17 19:58:53.393576
-77625255-d2a1-40ea-b200-6677558f0256	704f3226-4c5d-4269-a746-d5a648fb037a	a9da113e-8d77-4c2e-8aff-a4b1d14b2f42	004df477-84b3-4aba-b191-1bde5deb1606	f	pending	\N	\N	\N	nominated	\N	\N	\N	\N	\N	f	2026-05-18 23:08:21.025665	2026-05-18 23:08:21.025665
-84fab1c7-e39e-4947-b3a1-625a1f0a7b22	37aa9a9a-5d84-4cf6-88e3-3f61938f6246	d9175740-c9e7-4245-aee5-b21e6bcc6edb	004df477-84b3-4aba-b191-1bde5deb1606	f	pending	\N	\N	\N	nominated	\N	\N	\N	\N	\N	f	2026-05-19 13:52:49.615077	2026-05-19 13:52:49.615077
+77625255-d2a1-40ea-b200-6677558f0256	704f3226-4c5d-4269-a746-d5a648fb037a	a9da113e-8d77-4c2e-8aff-a4b1d14b2f42	004df477-84b3-4aba-b191-1bde5deb1606	f	approved	004df477-84b3-4aba-b191-1bde5deb1606	2026-05-23 18:21:13.629	\N	csm_approved	\N	\N	\N	\N	\N	f	2026-05-18 23:08:21.025665	2026-05-23 18:21:13.629
+84fab1c7-e39e-4947-b3a1-625a1f0a7b22	37aa9a9a-5d84-4cf6-88e3-3f61938f6246	d9175740-c9e7-4245-aee5-b21e6bcc6edb	004df477-84b3-4aba-b191-1bde5deb1606	f	approved	004df477-84b3-4aba-b191-1bde5deb1606	2026-05-24 16:58:58.367	\N	csm_approved	\N	\N	\N	\N	\N	f	2026-05-19 13:52:49.615077	2026-05-24 16:58:58.367
+1f927882-a5a1-471d-a00a-e21b8bab0a20	37aa9a9a-5d84-4cf6-88e3-3f61938f6246	11001aa3-bdd4-4f13-95e7-c7d02fc20bba	004df477-84b3-4aba-b191-1bde5deb1606	f	pending	\N	\N	\N	nominated	\N	\N	\N	\N	\N	f	2026-05-26 18:06:35.859477	2026-05-26 18:06:35.859477
+c7b8baa9-181a-4d5e-91a7-dd91b12a5482	99fc72b8-3f7e-484a-916f-27968259ec30	11001aa3-bdd4-4f13-95e7-c7d02fc20bba	004df477-84b3-4aba-b191-1bde5deb1606	f	approved	004df477-84b3-4aba-b191-1bde5deb1606	2026-05-26 18:06:49.933	\N	csm_approved	\N	\N	\N	\N	\N	f	2026-05-26 18:06:43.518967	2026-05-26 18:06:49.933
+fc873689-e3ed-4794-a2bc-4ee196b7492e	e47eeb20-d797-4389-b892-42b8929c9260	11001aa3-bdd4-4f13-95e7-c7d02fc20bba	004df477-84b3-4aba-b191-1bde5deb1606	f	approved	004df477-84b3-4aba-b191-1bde5deb1606	2026-05-26 18:06:51.299	\N	csm_approved	\N	\N	\N	\N	\N	f	2026-05-26 18:06:37.105029	2026-05-26 18:06:51.299
+ff513f77-9e36-4561-9e6c-5b68f85b73d4	471f1f31-7938-4078-b5d5-cf1e5a9526ec	11001aa3-bdd4-4f13-95e7-c7d02fc20bba	004df477-84b3-4aba-b191-1bde5deb1606	f	approved	004df477-84b3-4aba-b191-1bde5deb1606	2026-05-26 18:06:52.254	\N	csm_approved	\N	\N	\N	\N	\N	f	2026-05-26 18:06:31.264312	2026-05-26 18:06:52.254
+7a5e6045-eb55-45a3-8aaa-fd36af87bbb7	1c3dd9b2-b399-40fa-b215-d6e8908b3588	11001aa3-bdd4-4f13-95e7-c7d02fc20bba	004df477-84b3-4aba-b191-1bde5deb1606	f	approved	004df477-84b3-4aba-b191-1bde5deb1606	2026-05-26 18:06:52.826	\N	csm_approved	\N	\N	\N	\N	\N	f	2026-05-26 18:06:40.923917	2026-05-26 18:06:52.826
+5b4308a3-587a-41c9-9b39-e265a5699c91	ec222637-64f4-4b27-8ac2-dd0f2a553c75	11001aa3-bdd4-4f13-95e7-c7d02fc20bba	004df477-84b3-4aba-b191-1bde5deb1606	f	approved	004df477-84b3-4aba-b191-1bde5deb1606	2026-05-26 18:06:53.905	\N	csm_approved	\N	\N	\N	\N	\N	f	2026-05-26 18:06:28.724665	2026-05-26 18:06:53.905
 \.
 
 
@@ -282,10 +330,11 @@ COPY public.beta_enrollments (id, client_id, feature_id, assigned_by, is_overflo
 -- Data for Name: beta_features; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.beta_features (id, name, owner_pm, owner_pmm, target_tester_count, status, start_date, closed_at, close_reason, close_notes, ideal_client_criteria, outreach_deadline, cloned_from, created_at, updated_at, jira_epic_link) FROM stdin;
-d9175740-c9e7-4245-aee5-b21e6bcc6edb	Listings Optimization Agent	ed13f6be-692d-4f89-a77d-57d070bdb774	4dd0edc1-54e0-4928-ab9e-658d088f2623	15	{draft}	2026-06-02	\N	\N	\N	Enterprise listings client	2026-06-02	\N	2026-05-17 19:24:57.971937	2026-05-17 19:34:37.767	https://feature-roadmap.replit.app/?issue=BIRD-200688
-a9da113e-8d77-4c2e-8aff-a4b1d14b2f42	Search AI Optimization Agent	b498d3a5-0936-46f2-bdc9-441abeae9aa4	4dd0edc1-54e0-4928-ab9e-658d088f2623	15	{draft}	2026-06-02	\N	\N	\N		2026-06-02	\N	2026-05-18 23:02:53.196089	2026-05-18 23:02:53.196089	https://feature-roadmap.replit.app/?issue=BIRD-193248
-ac983730-3889-4c1e-89ab-5d66c66ed80c	Myna Agents	aa578ef5-541c-4de1-a69a-827c1ee520f4	98e67dd8-1469-4717-8ebe-c0774f47e58f	15	{draft}	2026-06-02	\N	\N	\N		2026-06-02	\N	2026-05-18 23:07:15.039533	2026-05-18 23:07:15.039533	https://feature-roadmap.replit.app/?issue=BIRD-182123
+COPY public.beta_features (id, name, owner_pm, owner_pmm, target_tester_count, status, start_date, closed_at, close_reason, close_notes, ideal_client_criteria, outreach_deadline, cloned_from, created_at, updated_at, jira_epic_link, slug, previous_slug) FROM stdin;
+ac983730-3889-4c1e-89ab-5d66c66ed80c	Myna Agents	aa578ef5-541c-4de1-a69a-827c1ee520f4	98e67dd8-1469-4717-8ebe-c0774f47e58f	15	draft	2026-06-02	\N	\N	\N		2026-06-02	\N	2026-05-18 23:07:15.039533	2026-05-18 23:07:15.039533	https://feature-roadmap.replit.app/?issue=BIRD-182123	myna-agents	\N
+a9da113e-8d77-4c2e-8aff-a4b1d14b2f42	Search AI Optimization Agent	b498d3a5-0936-46f2-bdc9-441abeae9aa4	4dd0edc1-54e0-4928-ab9e-658d088f2623	15	recruiting	2026-06-02	\N	\N	\N		2026-06-02	\N	2026-05-18 23:02:53.196089	2026-05-24 16:56:07.878	https://feature-roadmap.replit.app/?issue=BIRD-193248	search-ai-optimization-agent	\N
+d9175740-c9e7-4245-aee5-b21e6bcc6edb	Listings Optimization Agent	ed13f6be-692d-4f89-a77d-57d070bdb774	4dd0edc1-54e0-4928-ab9e-658d088f2623	15	draft	2026-06-02	\N	\N	\N	Enterprise listings client	2026-06-02	\N	2026-05-17 19:24:57.971937	2026-05-24 17:38:15.841	https://feature-roadmap.replit.app/?issue=BIRD-200688	listings-optimization-agent	\N
+11001aa3-bdd4-4f13-95e7-c7d02fc20bba	Social Publishing Agent Test	a9e29554-510e-4b3b-b1be-1210b24102b8	f7db9b43-5165-44d0-931c-eebbdf8fb2f4	15	in_progress	2026-06-02	\N	\N	\N	Active customers with a relevant use case, green or yellow account health, and willingness to provide structured feedback within the beta period.	2026-06-02	\N	2026-05-26 18:05:51.873421	2026-05-26 18:05:58.782	https://feature-roadmap.replit.app/?issue=BIRD-182581	social-publishing-agent-test	\N
 \.
 
 
@@ -2090,6 +2139,14 @@ f9dba23a-d9fd-422d-8657-b7f9d45906de	Genesis Counseling Center	200c8b17-2fd7-493
 
 
 --
+-- Data for Name: feedback; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.feedback (id, client_id, feature_id, sentiment, notes, logged_by, created_at) FROM stdin;
+\.
+
+
+--
 -- Data for Name: outreach_batch_enrollments; Type: TABLE DATA; Schema: public; Owner: -
 --
 
@@ -2201,6 +2258,76 @@ bcb8ccdf-899a-42c9-8be1-e8ca40f42f0e	Aakanksha Vats	aakanksha.vats@birdeye.com	p
 f7db9b43-5165-44d0-931c-eebbdf8fb2f4	Manila Rauniyar	manila.rauniyar@birdeye.com	pmm	\N	\N	2026-05-23 01:08:41.759072
 19c37e4c-7780-434e-9d25-bcd6ee6dca4b	Harith Venkitakrishnan	harith.venkitakrishnan@birdeye.com	pmm	\N	\N	2026-05-23 01:09:46.702026
 cc0b74f2-6c7c-41f1-8942-2a3c5e0b9041	Reshma Rayadurgam	reshma.rayadurgam@birdeye.com	pmm	\N	\N	2026-05-23 01:10:13.634171
+c43ca194-6ae5-442e-9b5d-d2663991f14d	Robert Black	robert.black@birdeye.com	ae	\N	\N	2026-05-26 17:26:07.792002
+aca999b4-82a6-4379-974b-e141d5383349	Aaron Novak	aaron.novak@birdeye.com	ae	\N	\N	2026-05-26 17:27:13.424977
+2376ae2d-ca07-46d1-ae69-176ef70e0cfa	Aditya Chauhan	aditya.chauhan@birdeye.com	ae	\N	\N	2026-05-26 17:27:44.79026
+60b207c5-da30-47f3-9a17-a89d7df791b2	Aditya Tripathi	aditya.tripathi@birdeye.com	ae	\N	\N	2026-05-26 17:28:07.505324
+9b981f3e-a12d-4e15-9755-32f688bac651	Amber Then	amber.then@birdeye.com	ae	\N	\N	2026-05-26 17:28:26.717852
+fbc8626e-342b-4607-9eda-221812c0fc19	Ami Espinal	ami.espinal@birdeye.com	ae	\N	\N	2026-05-26 17:28:52.08062
+3ace81d9-0261-4e0b-831b-42c52a8ff52e	April Ngo	april.ngo@birdeye.com	ae	\N	\N	2026-05-26 17:29:07.944424
+077180cf-167e-48fe-9d2e-45906228cf9a	Atul Pandey	atul.pandey@birdeye.com	ae	\N	\N	2026-05-26 17:29:32.515182
+0bd4e319-d555-4c09-9466-9a6229f105b8	Ayush Gairola	ayush.gairola@birdeye.com	ae	\N	\N	2026-05-26 17:29:57.555704
+e962e0bb-8b0e-401e-81c3-9ebd0c598a3c	Ben Stidwill	ben.stidwill@birdeye.com	ae	\N	\N	2026-05-26 17:30:24.213977
+b6135a63-5402-45b3-9e03-b6005728b361	Brandon Borden	brandon.borden@birdeye.com	ae	\N	\N	2026-05-26 17:30:38.131717
+0e6b8f86-aaf2-4770-adce-a95683d0e7b2	Brian Bulkley	brian.bulkley@birdeye.com	ae	\N	\N	2026-05-26 17:31:05.100265
+6c856258-d90c-4be6-afe6-8fb8f0a4e70e	Brian Jeffery	brian.jeffery@birdeye.com	ae	\N	\N	2026-05-26 17:31:21.397335
+e762b64d-d801-4497-9edc-96843c1eecee	Britany Schachtner	britany.schachtner@birdeye.com	ae	\N	\N	2026-05-26 17:32:57.809566
+506a955b-d8e6-46db-a17e-e2706198c90d	Brittany Olson	brittany.olson@birdeye.com	ae	\N	\N	2026-05-26 17:33:41.375294
+b30634d9-565f-4af8-bcf2-2e20abf08053	Chaaht Vasisth	chaaht.vasisth@birdeye.com	ae	\N	\N	2026-05-26 17:34:07.963286
+7e14f952-2e98-4308-834b-952982b57735	Chelsea Sullivan	chelsea.sullivan@birdeye.com	ae	\N	\N	2026-05-26 17:34:48.14298
+bc47814f-8ee6-4797-bfba-99e726cac35d	Chris Grundell	chris.grundell@birdeye.com	ae	\N	\N	2026-05-26 17:35:02.170479
+91df5f23-c418-4bf7-847c-c8ca69305f4f	Cole Wilkins	cole.wilkins@birdeye.com	ae	\N	\N	2026-05-26 17:35:20.361391
+68f35251-fbdf-4d8b-b526-4c2eb3af71f1	Dan Godfrey	dan.godfrey@birdeye.com	ae	\N	\N	2026-05-26 17:35:33.750736
+710f09e9-9043-454c-90d3-06dd1ecf23a4	Emerson Radabaugh	emerson.radabaugh@birdeye.com	ae	\N	\N	2026-05-26 17:38:17.258298
+3cd8f2b9-94d9-4d1e-896f-09b9274f1310	Emmanuel Gabler	emmanuel.gabler@birdeye.com	ae	\N	\N	2026-05-26 17:38:54.984619
+6c5e5cb7-46bb-42ea-aa42-846795b8762c	Geno Ricci	geno.ricci@birdeye.com	ae	\N	\N	2026-05-26 17:39:23.154229
+61a5c233-7da6-480d-835e-eeb7608a282c	Heather Fink	heather.fink@birdeye.com	ae	\N	\N	2026-05-26 17:39:37.387279
+381578d3-4780-41d7-b304-9b69965b476f	Hershika Sobti	hershika.sobti@birdeye.com	ae	\N	\N	2026-05-26 17:39:58.203376
+6c75b799-e74d-4b7c-9890-e900cb3a8266	Jaclyn Kilburn	jaclyn.kilburn@birdeye.com	ae	\N	\N	2026-05-26 17:40:18.232374
+6fa2dc8c-00d7-4e8b-a903-aa260bd969fa	Jacob Hoard	jacob.hoard@birdeye.com	ae	\N	\N	2026-05-26 17:41:01.581563
+6b2160d0-fba4-499f-951d-e9a385a60b28	Janine Elliott	janine.elliott@birdeye.com	ae	\N	\N	2026-05-26 17:41:22.814758
+47763d92-d646-48e2-a572-644b138eb044	Jeff Novak	jeff.novak@birdeye.com	ae	\N	\N	2026-05-26 17:41:37.101565
+183ef182-4f8a-4855-aba9-acbf5a4fce73	Joe Marchese	joe.marchese@birdeye.com	ae	\N	\N	2026-05-26 17:41:51.10658
+64c603c4-1f69-45cf-9008-ed490c9d8070	Jordan Keegan	jordan.keegan@birdeye.com	ae	\N	\N	2026-05-26 17:42:05.890411
+b8e7d0d5-a198-4598-af8f-71b9b7687746	Jordan Pinzolo	jordan.pinzolo@birdeye.com	ae	\N	\N	2026-05-26 17:42:26.9538
+2ee8c92e-99ca-4a7e-8612-3859a9ffb2e8	Julia Porter	julia.porter@birdeye.com	ae	\N	\N	2026-05-26 17:42:40.724177
+e4369c65-7c26-4689-8f51-74939bffd9ab	Kameron Hall	kameron.hall@birdeye.com	ae	\N	\N	2026-05-26 17:45:18.856416
+2d6a8d72-22da-4d8a-9436-af8bc1080dee	Karan Sabikhi	karan.sabikhi@birdeye.com	ae	\N	\N	2026-05-26 17:45:35.401767
+c1b89313-3093-4231-b7ad-0a0e7daa8c24	Korinna Komarova	korinna.komarova@birdeye.com	ae	\N	\N	2026-05-26 17:46:04.226971
+68ab07e9-6eb1-4740-936b-cf00684319a9	Kristen Goen	kristen.goen@birdeye.com	ae	\N	\N	2026-05-26 17:46:22.703915
+bb56871e-ac79-4f42-b50c-7698b3bbdd06	Kunal Khanna	kunal.khanna@birdeye.com	ae	\N	\N	2026-05-26 17:46:41.332277
+34e78c14-ad28-4740-9587-74440caf5b7a	Kyle Bles	kyle.bles@birdeye.com	ae	\N	\N	2026-05-26 17:48:40.936802
+ab175a33-1879-4766-be17-ae3237363103	Lee Ziebarth	lee.ziebarth@birdeye.com	ae	\N	\N	2026-05-26 17:48:54.497253
+f22450e8-bc51-4eec-a985-fe19a64f5a8d	Leonard Tau	leonard.tau@birdeye.com	ae	\N	\N	2026-05-26 17:49:17.975148
+fe25f878-bc68-4eb4-a787-41fc572d6b6e	Lisette Collins	lisette.collins@birdeye.com	ae	\N	\N	2026-05-26 17:49:35.218493
+04b3fdc5-c641-4d13-9bf5-bb0583fa57f3	Mark Scannell	mark.scannell@birdeye.com	ae	\N	\N	2026-05-26 17:49:54.95064
+4897786b-c120-44c0-a7e5-996fcfc0c6d6	Mason Bullard	mason.bullard@birdeye.com	ae	\N	\N	2026-05-26 17:50:15.058948
+c01dea49-e91e-4336-ac3b-b8dd217759f8	Michael Tarter	michael.tarter@birdeye.com	ae	\N	\N	2026-05-26 17:50:31.143933
+c1f3bf06-d639-4859-9df4-b119f8d8399a	Mike McHardy	mike.mchardy@birdeye.com	ae	\N	\N	2026-05-26 17:50:46.807235
+2ee0ef8a-2eba-44d5-8ac8-cddbb01d1e27	Mohsin Samnani	mohsin.samnani@birdeye.com	ae	\N	\N	2026-05-26 17:51:12.964068
+0e2c3546-7025-4d23-8c87-c57453879fc6	Nathan Griffiths	nathan.griffiths@birdeye.com	ae	\N	\N	2026-05-26 17:51:45.859444
+94a44f81-61e2-4604-a1cf-07e9fe0346a4	Nikhil Dudi	nikhil.dudi@birdeye.com	ae	\N	\N	2026-05-26 17:52:01.711395
+f0fafa9b-9d9e-48ce-b713-18dc006293c6	Pearse Mulvany	pearse.mulvany@birdeye.com	ae	\N	\N	2026-05-26 17:52:21.573905
+99e346b9-1881-4809-8ed7-090e65fe329a	Peter Barrie	peter.barrie@birdeye.com	ae	\N	\N	2026-05-26 17:52:33.73595
+d22e0aa2-82ee-41b6-96d8-7ee77779cd6e	Prachi Solanki	prachi.solanki@birdeye.com	ae	\N	\N	2026-05-26 17:52:58.839628
+05036928-0d2a-4614-bde9-4a255e03500e	Pratyush Rathi	pratyush.rathi@birdeye.com	ae	\N	\N	2026-05-26 17:53:19.313863
+1b8fe2fb-7c65-4e13-884d-17fa01ad0e94	Ridhi Mohan	ridhi.mohan@birdeye.com	ae	\N	\N	2026-05-26 17:53:34.84176
+79372871-7450-4e9d-a92f-3038cec90309	Robert Castel	robert.castel@birdeye.com	ae	\N	\N	2026-05-26 17:53:53.140825
+1df3c652-b983-4015-a1e9-d6c25b155228	Rohit Sharma	rohit.sharma@birdeye.com	ae	\N	\N	2026-05-26 17:54:12.682165
+fdc803f7-07d8-420c-83b1-48b4c2db733b	Sam Good	sam.good@birdeye.com	ae	\N	\N	2026-05-26 17:54:26.000128
+f2890e57-8975-496a-aed4-3cc07e6e7819	Scott Sebens	scott.sebens@birdeye.com	ae	\N	\N	2026-05-26 17:54:47.556029
+77b2fe27-3e57-4a41-95ff-a65866532cbd	Sherry Arora	sherry.arora@birdeye.com	ae	\N	\N	2026-05-26 17:55:03.454128
+2acc476a-1dec-48ef-bb75-5c077d1ebebf	Shiva Reddy	shiva.reddy@birdeye.com	ae	\N	\N	2026-05-26 17:55:22.837739
+d0f3455b-00a6-4afc-bcdc-d7344c55798e	Stuart Young	stuart.young@birdeye.com	ae	\N	\N	2026-05-26 17:55:46.843903
+0e2eb2bd-79e7-4496-9e33-e196859b68e5	Suhail Farook	suhail.farook@birdeye.com	ae	\N	\N	2026-05-26 17:56:03.094796
+55bcab37-1a0c-497f-9553-9f3b26b78e21	Tony Van-Eyk	tony.van-eyk@birdeye.com	ae	\N	\N	2026-05-26 17:57:06.702305
+a723015c-7234-492b-ae0f-951f982942f8	Trais Foy	trais.foy@birdeye.com	ae	\N	\N	2026-05-26 17:57:27.916436
+c5c497ae-d1ca-41a8-bb36-55ec21cfa79a	Vaibhav Uttam	vaibhav.uttam@birdeye.com	ae	\N	\N	2026-05-26 17:57:50.694146
+c92f7f2c-3ccf-4401-bbe6-fd8b90d6ddbb	Virender Bhola	virender.bhola@birdeye.com	ae	\N	\N	2026-05-26 17:58:14.031857
+669df3cc-a9d8-4d3d-8b0d-31f09a449664	Vishesh Gupta	vishesh.gupta@birdeye.com	ae	\N	\N	2026-05-26 17:58:39.612831
+ab4379d0-c727-4bfe-aeed-29deaac8cb2d	Warren Kay	warren.kay@birdeye.com	ae	\N	\N	2026-05-26 17:58:49.832403
+6556863e-6356-41ed-8485-eb3e3a45d829	Zach Watson	zach.watson@birdeye.com	ae	\N	\N	2026-05-26 17:59:06.934412
+a1764d10-3a4e-468a-8281-5f16a596c50d	Zoie Page	zoie.page@birdeye.com	ae	\N	\N	2026-05-26 17:59:23.918793
 \.
 
 
@@ -2253,6 +2380,14 @@ ALTER TABLE ONLY public.clients
 
 
 --
+-- Name: feedback feedback_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.feedback
+    ADD CONSTRAINT feedback_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: outreach_batch_enrollments outreach_batch_enrollments_batch_id_enrollment_id_pk; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2282,6 +2417,13 @@ ALTER TABLE ONLY public.users
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: beta_features_slug_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX beta_features_slug_unique ON public.beta_features USING btree (slug);
 
 
 --
@@ -2349,6 +2491,30 @@ ALTER TABLE ONLY public.clients
 
 
 --
+-- Name: feedback feedback_client_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.feedback
+    ADD CONSTRAINT feedback_client_id_fkey FOREIGN KEY (client_id) REFERENCES public.clients(id);
+
+
+--
+-- Name: feedback feedback_feature_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.feedback
+    ADD CONSTRAINT feedback_feature_id_fkey FOREIGN KEY (feature_id) REFERENCES public.beta_features(id);
+
+
+--
+-- Name: feedback feedback_logged_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.feedback
+    ADD CONSTRAINT feedback_logged_by_fkey FOREIGN KEY (logged_by) REFERENCES public.users(id);
+
+
+--
 -- Name: outreach_batch_enrollments outreach_batch_enrollments_batch_id_outreach_batches_id_fk; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2384,5 +2550,5 @@ ALTER TABLE ONLY public.outreach_batches
 -- PostgreSQL database dump complete
 --
 
-\unrestrict RVZCDnHtHohRY1e3IM1yNtKtaLWn1bMKOfXDhCyzP7qpWILoM8OsFjj2UYTgdJu
+\unrestrict 8pvh0SYJBkTn8x8beovzgDmRxMmJDGCyVQVujrHNvq4qJYkLwoa95eqhNHLY8JC
 

@@ -22,6 +22,7 @@ export const betaFeaturesTable = pgTable("beta_features", {
   closeReason: closeReasonEnum("close_reason"),
   closeNotes: text("close_notes"),
   idealClientCriteria: text("ideal_client_criteria"),
+  betaGoal: text("beta_goal"),
   outreachDeadline: date("outreach_deadline").notNull(),
   jiraEpicLink: text("jira_epic_link").notNull().default(""),
   slug: text("slug").unique(),

@@ -10,6 +10,7 @@ export function NewFeatureModal({ onClose, onCreated }: { onClose: () => void; o
   const [idealClientCriteria, setIdealClientCriteria] = useState(
     "Active customers with a relevant use case, green or yellow account health, and willingness to provide structured feedback within the beta period."
   );
+  const [betaGoal, setBetaGoal] = useState("");
   const [targetTesterCount, setTargetTesterCount] = useState("15");
   const [jiraEpicLink, setJiraEpicLink] = useState("");
   const [users, setUsers] = useState<any[]>([]);
@@ -30,7 +31,7 @@ export function NewFeatureModal({ onClose, onCreated }: { onClose: () => void; o
     }
     setPending(true); setError("");
     try {
-      await api.features.create({ name, ownerPmId, ownerPmmId, startDate, outreachDeadline, idealClientCriteria, jiraEpicLink, targetTesterCount: parseInt(targetTesterCount, 10) });
+      await api.features.create({ name, ownerPmId, ownerPmmId, startDate, outreachDeadline, idealClientCriteria, betaGoal, jiraEpicLink, targetTesterCount: parseInt(targetTesterCount, 10) });
       onCreated(); onClose();
     } catch (e: any) {
       setError(e.data?.error ?? "Failed to create feature.");
@@ -93,6 +94,12 @@ export function NewFeatureModal({ onClose, onCreated }: { onClose: () => void; o
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Ideal client criteria</label>
             <textarea value={idealClientCriteria} onChange={(e) => setIdealClientCriteria(e.target.value)} rows={2}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Beta goal</label>
+            <textarea value={betaGoal} onChange={(e) => setBetaGoal(e.target.value)} rows={2}
+              placeholder="What are we trying to learn? What specific feedback are we looking for from participants?"
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none" />
           </div>
           {error && <p className="text-sm text-red-600">{error}</p>}

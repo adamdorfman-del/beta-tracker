@@ -41,6 +41,7 @@ router.get("/", async (req, res) => {
       slug: betaFeaturesTable.slug,
       status: betaFeaturesTable.status,
       idealClientCriteria: betaFeaturesTable.idealClientCriteria,
+      betaGoal: betaFeaturesTable.betaGoal,
       targetTesterCount: betaFeaturesTable.targetTesterCount,
       ownerPmId: betaFeaturesTable.ownerPmId,
       ownerPmmId: betaFeaturesTable.ownerPmmId,

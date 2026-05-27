@@ -18,6 +18,7 @@ export function EditFeatureModal({ feature, onClose, onSaved }: Props) {
     outreachDeadline:    feature.outreachDeadline ?? "",
     targetTesterCount:   String(feature.targetTesterCount ?? 15),
     idealClientCriteria: feature.idealClientCriteria ?? "",
+    betaGoal:            feature.betaGoal ?? "",
   });
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
@@ -148,6 +149,17 @@ export function EditFeatureModal({ feature, onClose, onSaved }: Props) {
               value={form.idealClientCriteria}
               onChange={(e) => set("idealClientCriteria", e.target.value)}
               rows={3}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Beta goal</label>
+            <textarea
+              value={form.betaGoal}
+              onChange={(e) => set("betaGoal", e.target.value)}
+              rows={3}
+              placeholder="What are we trying to learn? What specific feedback are we looking for from participants?"
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none"
             />
           </div>

@@ -180,6 +180,14 @@ export default function FeaturesPage() {
                     <td className="px-4 py-3 hidden sm:table-cell">
                       <div className="flex items-center gap-1.5">
                         <BetaStatusBadge status={f.status} />
+                        {!(f as any).betaGoal && (
+                          <span
+                            title="Missing beta goal"
+                            className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                          >
+                            Missing beta goal
+                          </span>
+                        )}
                         {(f as any).pendingApprovalCount > 0 && (
                           <span
                             title={`${(f as any).pendingApprovalCount} enrollment${(f as any).pendingApprovalCount === 1 ? "" : "s"} pending CSM approval`}
