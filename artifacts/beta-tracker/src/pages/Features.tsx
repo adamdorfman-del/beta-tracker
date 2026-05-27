@@ -16,19 +16,12 @@ function TrashIcon() {
   );
 }
 
-const ALL_STATUSES: BetaStatus[] = [
-  "draft", "recruiting", "outreach_sent", "in_progress", "full", "closing", "complete", "closed",
-];
+const ALL_STATUSES: BetaStatus[] = ["draft", "in_progress", "complete"];
 
 const STATUS_LABELS: Record<BetaStatus, string> = {
-  draft:         "Draft",
-  recruiting:    "Recruiting",
-  outreach_sent: "Outreach Sent",
-  in_progress:   "In Progress",
-  full:          "Full",
-  closing:       "Closing",
-  complete:      "Complete",
-  closed:        "Closed",
+  draft:       "Draft",
+  in_progress: "In Progress",
+  complete:    "Complete",
 };
 const TAKE = 25;
 

@@ -234,7 +234,7 @@ router.get("/csm-responsiveness", async (req, res) => {
 // GET /api/reports/sentiment-by-beta
 router.get("/sentiment-by-beta", async (req, res) => {
   try {
-    const activeStatuses = ["recruiting", "outreach_sent", "in_progress"];
+    const activeStatuses = ["draft", "in_progress"];
     const features = await db
       .select({ id: betaFeaturesTable.id, name: betaFeaturesTable.name, slug: betaFeaturesTable.slug, status: betaFeaturesTable.status })
       .from(betaFeaturesTable)

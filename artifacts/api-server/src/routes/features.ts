@@ -31,8 +31,8 @@ router.get("/", async (req, res) => {
       switch (sort) {
         case "name":    return isDesc ? desc(betaFeaturesTable.name)      : asc(betaFeaturesTable.name);
         case "status":  return isDesc
-          ? desc(sql`CASE status WHEN 'draft' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'complete' THEN 3 END`)
-          : asc(sql`CASE status WHEN 'draft' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'complete' THEN 3 END`);
+          ? desc(sql`CASE status WHEN 'draft' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'complete' THEN 3 ELSE 4 END`)
+          : asc(sql`CASE status WHEN 'draft' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'complete' THEN 3 ELSE 4 END`);
         case "slots":   return isDesc ? desc(betaFeaturesTable.targetTesterCount) : asc(betaFeaturesTable.targetTesterCount);
         case "pm":      return isDesc ? desc(betaFeaturesTable.ownerPmId)  : asc(betaFeaturesTable.ownerPmId);
         case "start":   return isDesc ? desc(betaFeaturesTable.startDate)  : asc(betaFeaturesTable.startDate);
