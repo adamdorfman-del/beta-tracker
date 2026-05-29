@@ -10,6 +10,20 @@ steps:
       - -t
       - us-central1-docker.pkg.dev/beta-tracker-497019/beta-tracker/beta-tracker:linux-amd64
       - .
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - push
+      - us-central1-docker.pkg.dev/beta-tracker-497019/beta-tracker/beta-tracker:linux-amd64
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    args:
+      - gcloud
+      - run
+      - deploy
+      - beta-tracker
+      - --image=us-central1-docker.pkg.dev/beta-tracker-497019/beta-tracker/beta-tracker:linux-amd64
+      - --region=us-central1
+      - --platform=managed
+      - --quiet
 images:
   - us-central1-docker.pkg.dev/beta-tracker-497019/beta-tracker/beta-tracker:linux-amd64
 options:
