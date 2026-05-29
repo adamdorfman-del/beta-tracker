@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { api } from "@/lib/api";
 import { BetaStatusBadge, TesterStatusBadge } from "@/components/StatusBadge";
@@ -594,11 +594,10 @@ function EnrollmentFeedback({ clientId, clientName, featureId, featureName, test
 
 const NOMINATE_TAKE = 50;
 
-function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSignal }: {
+const NominatePanel = React.memo(function NominatePanel({ featureId, enrolledClientIds, onEnrolled }: {
   featureId: string;
   enrolledClientIds: Set<string>;
-  onNominated: () => void;
-  refreshSignal: number;
+  onEnrolled: (enrollment: any, client: any) => void;
 }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -614,7 +613,6 @@ function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSigna
   const [result, setResult] = useState<{ warning?: string; error?: string } | null>(null);
   const pageRef = useRef(1);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const savedScrollRef = useRef<number | null>(null);
   const enrolledRef = useRef(enrolledClientIds);
   enrolledRef.current = enrolledClientIds;
   // Tracks IDs nominated this session so they're excluded from fetches even before
@@ -651,8 +649,6 @@ function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSigna
       .catch(console.error)
       .finally(() => { if (!cancelled) setPageLoading(false); });
     return () => { cancelled = true; };
-    // refreshSignal intentionally excluded: nominatedRef already prevents re-appearance
-    // of added clients, so a full re-fetch on every add is unnecessary and resets scroll.
   }, [debouncedQuery, filterHealth.join(","), filterSegment.join(","), filterVertical.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -684,23 +680,25 @@ function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSigna
 
   const sentinelRef = useInfiniteScroll(loadMore, !pageLoading && clients.length < total, scrollRef);
 
-  useLayoutEffect(() => {
-    if (savedScrollRef.current !== null && scrollRef.current) {
-      scrollRef.current.scrollTop = savedScrollRef.current;
-      savedScrollRef.current = null;
-    }
-  }, [clients]);
-
   async function nominate(clientId: string, force = false) {
     setResult(null); setPending(true);
+
+    // Optimistically remove the client immediately — no scroll reset, no re-fetch
+    const clientIndex = clients.findIndex((c: any) => c.id === clientId);
+    const client = clients[clientIndex];
+    nominatedRef.current = new Set([...nominatedRef.current, clientId]);
+    setClients(prev => prev.filter((c: any) => c.id !== clientId));
+    setTotal(prev => prev - 1);
+
     try {
       const data = await api.enrollments.create({ clientId, featureId, force });
       if (data.warning) setResult({ warning: data.warning });
-      savedScrollRef.current = scrollRef.current?.scrollTop ?? null;
-      nominatedRef.current = new Set([...nominatedRef.current, clientId]);
-      setClients(prev => prev.filter((c: any) => c.id !== clientId));
-      onNominated();
+      onEnrolled(data.enrollment, client);
     } catch (e: any) {
+      // Rollback: restore the client at its original position
+      nominatedRef.current = new Set([...nominatedRef.current].filter(id => id !== clientId));
+      setClients(prev => { const next = [...prev]; next.splice(clientIndex, 0, client); return next; });
+      setTotal(prev => prev + 1);
       const errData = e.data ?? {};
       if (errData.conflict) {
         const confirmed = window.confirm(`${errData.error}\n\nNominate anyway?`);
@@ -752,17 +750,18 @@ function NominatePanel({ featureId, enrolledClientIds, onNominated, refreshSigna
       )}
     </div>
   );
-}
+});
 
 export default function FeatureDetailPage({ params: { id } }: { params: { id: string } }) {
   const [feature, setFeature] = useState<BetaFeature & { enrollments: BetaEnrollment[] } | null>(null);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
+  const [initialEnrolledIds, setInitialEnrolledIds] = useState<Set<string>>(new Set());
   const currentUser = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [expandId, setExpandId] = useState<string | null>(null);
   const [expandedClient, setExpandedClient] = useState<any>(null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
-  const [nominationVersion, setNominationVersion] = useState(0);
   const [enrollSortCol, setEnrollSortCol] = useState("");
   const [enrollSortDir, setEnrollSortDir] = useState<"asc" | "desc">("asc");
   const [removedOpen, setRemovedOpen] = useState(false);
@@ -770,6 +769,16 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   const [goalExpanded, setGoalExpanded] = useState(false);
   const [feedbackDetail, setFeedbackDetail] = useState<any>(null);
   const [, navigate] = useLocation();
+
+  // Stable callback — never changes reference, so React.memo on NominatePanel
+  // won't re-render the panel when the enrollment table updates.
+  const handleEnrolled = useCallback((enrollment: any, client: any) => {
+    const optimistic = {
+      ...enrollment,
+      client: { id: client.id, name: client.name, accountHealth: client.accountHealth },
+    };
+    setEnrollments(prev => [...prev, optimistic]);
+  }, []);
 
   function toggleEnrollSort(col: string) {
     if (enrollSortCol === col) setEnrollSortDir(d => d === "asc" ? "desc" : "asc");
@@ -784,7 +793,10 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
           navigate(`/features/${f.slug}`, { replace: true } as any);
           return;
         }
+        const featureEnrollments = f.enrollments ?? [];
         setFeature(f);
+        setEnrollments(featureEnrollments);
+        setInitialEnrolledIds(new Set(featureEnrollments.map((e: any) => e.clientId)));
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -794,7 +806,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
 
   useEffect(() => {
     if (!expandId) { setExpandedClient(null); return; }
-    const enrollment = (feature?.enrollments as any[])?.find(e => e.id === expandId);
+    const enrollment = enrollments.find(e => e.id === expandId);
     const clientId = (enrollment?.client as any)?.id ?? enrollment?.clientId;
     if (!clientId) return;
     setExpandedClient(null);
@@ -804,7 +816,6 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   if (loading && !feature) return <div className="py-16 text-center text-sm text-gray-400">Loading…</div>;
   if (!feature) return <div className="py-16 text-center text-sm text-gray-400">Feature not found.</div>;
 
-  const enrollments = feature.enrollments ?? [];
   const activeEnrollments = enrollments.filter(
     (e) => !["dropped", "cancelled"].includes(e.testerStatus) && e.csmApprovalStatus !== "rejected"
   );
@@ -824,7 +835,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   ] as const;
 
   function onRemoved(enrollmentId: string) {
-    setFeature(f => f ? { ...f, enrollments: f.enrollments.filter(e => e.id !== enrollmentId) } : f);
+    setEnrollments(prev => prev.filter(e => e.id !== enrollmentId));
     load();
   }
 
@@ -1247,9 +1258,8 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Add Beta Testers</h2>
             <NominatePanel
               featureId={feature.id}
-              enrolledClientIds={new Set(enrollments.map((e) => e.clientId))}
-              onNominated={() => { setNominationVersion(v => v + 1); load(); }}
-              refreshSignal={nominationVersion}
+              enrolledClientIds={initialEnrolledIds}
+              onEnrolled={handleEnrolled}
             />
           </div>
         )}
