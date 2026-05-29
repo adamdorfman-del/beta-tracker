@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { BetaStatus, TesterStatus, ApprovalStatus, BatchStatus } from "@/lib/types";
 
 const BETA_STATUS: Record<BetaStatus, { label: string; className: string }> = {
@@ -6,16 +7,21 @@ const BETA_STATUS: Record<BetaStatus, { label: string; className: string }> = {
   complete:    { label: "Complete",    className: "bg-green-100 text-green-700" },
 };
 
-const TESTER_STATUS: Record<TesterStatus, { label: string; className: string }> = {
-  nominated:    { label: "Nominated",     className: "bg-gray-100 text-gray-600" },
+type BadgeConfig = { label: string; className?: string; style?: CSSProperties };
+
+const TESTER_STATUS: Record<TesterStatus, BadgeConfig> = {
+  nominated:    { label: "Nominated",     style: { background: "#F1EFE8", color: "#5F5E5A" } },
   csm_pending:  { label: "CSM Pending",   className: "bg-amber-100 text-amber-700" },
-  csm_approved: { label: "CSM Approved",  className: "bg-blue-100 text-blue-700" },
+  csm_approved: { label: "CSM Approved",  style: { background: "#FEF3E2", color: "#B45309" } },
   outreach_sent:{ label: "Outreach Sent", className: "bg-violet-100 text-violet-700" },
   confirmed:    { label: "Confirmed",     className: "bg-teal-100 text-teal-700" },
   active:       { label: "Active",        className: "bg-green-100 text-green-700" },
   completed:    { label: "Completed",     className: "bg-emerald-100 text-emerald-700" },
   dropped:      { label: "Dropped",       className: "bg-red-100 text-red-700" },
   cancelled:    { label: "Cancelled",     className: "bg-gray-200 text-gray-500" },
+  enrolled:     { label: "Enrolled",      style: { background: "#E6F1FB", color: "#0C447C" } },
+  using:        { label: "Using",         style: { background: "#EEEDFE", color: "#3C3489" } },
+  accepted:     { label: "Accepted",      style: { background: "#E1F5EE", color: "#0F6E56" } },
 };
 
 const APPROVAL_STATUS: Record<ApprovalStatus, { label: string; className: string }> = {
@@ -30,9 +36,12 @@ const BATCH_STATUS: Record<BatchStatus, { label: string; className: string }> = 
   sent:    { label: "Sent",    className: "bg-green-100 text-green-700" },
 };
 
-function Badge({ label, className }: { label: string; className: string }) {
+function Badge({ label, className = "", style }: { label: string; className?: string; style?: CSSProperties }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${className}`}>
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${className}`}
+      style={style}
+    >
       {label}
     </span>
   );

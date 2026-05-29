@@ -7,7 +7,8 @@ export const approvalStatusEnum = pgEnum("approval_status", ["pending", "approve
 
 export const testerStatusEnum = pgEnum("tester_status", [
   "nominated", "csm_pending", "csm_approved", "outreach_sent",
-  "confirmed", "active", "completed", "dropped", "cancelled"
+  "confirmed", "active", "completed", "dropped", "cancelled",
+  "enrolled", "using", "accepted"
 ]);
 
 export const betaEnrollmentsTable = pgTable("beta_enrollments", {

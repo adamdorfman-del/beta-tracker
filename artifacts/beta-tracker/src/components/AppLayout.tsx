@@ -70,7 +70,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main content */}
-      <div className="flex flex-1 flex-col md:ml-56">
+      <div className="flex min-w-0 flex-1 flex-col overflow-x-hidden md:ml-56">
         <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 md:hidden">
           <div className="flex items-center gap-2">
             <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">

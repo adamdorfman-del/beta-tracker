@@ -39,6 +39,7 @@ export const api = {
     unapprove: (id: string) => apiFetch(`/enrollments/${id}/unapprove`, { method: "POST" }),
     reject: (id: string, body: object) => apiFetch(`/enrollments/${id}/reject`, { method: "POST", body: JSON.stringify(body) }),
     updateStatus: (id: string, body: object) => apiFetch(`/enrollments/${id}/status`, { method: "PUT", body: JSON.stringify(body) }),
+    patch: (id: string, body: object) => apiFetch(`/enrollments/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   },
   clients: {
     list: (params?: Record<string, string>) => {
@@ -94,5 +95,16 @@ export const api = {
       return apiFetch(`/feedback/summary${qs}`);
     },
     create: (body: object) => apiFetch("/feedback", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: object) => apiFetch(`/feedback/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    remove: (id: string) => apiFetch(`/feedback/${id}`, { method: "DELETE" }),
+  },
+  testimonials: {
+    list: (params?: Record<string, string>) => {
+      const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+      return apiFetch(`/testimonials${qs}`);
+    },
+    create: (body: object) => apiFetch("/testimonials", { method: "POST", body: JSON.stringify(body) }),
+    update: (id: string, body: object) => apiFetch(`/testimonials/${id}`, { method: "PUT", body: JSON.stringify(body) }),
+    remove: (id: string) => apiFetch(`/testimonials/${id}`, { method: "DELETE" }),
   },
 };

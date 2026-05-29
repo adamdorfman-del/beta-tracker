@@ -149,6 +149,38 @@ router.post("/", async (req, res) => {
   }
 });
 
+// PATCH /api/enrollments/:id
+router.patch("/:id", async (req, res) => {
+  try {
+    const adminUser = await getAdminUser();
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const ALLOWED = ["enrolled", "using", "accepted"];
+    if (!status || !ALLOWED.includes(status)) {
+      return err(res, `status must be one of: ${ALLOWED.join(", ")}.`);
+    }
+
+    const [enrollment] = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
+    if (!enrollment) return err(res, "Enrollment not found.", 404);
+
+    const [updated] = await db.update(betaEnrollmentsTable).set({
+      testerStatus: status as any,
+      updatedAt: new Date(),
+    }).where(eq(betaEnrollmentsTable.id, id)).returning();
+
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaEnrollment", entityId: id, action: "status_change",
+      changedById: adminUser.id, priorState: enrollment as any, nextState: updated as any,
+    });
+
+    return ok(res, updated);
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
 // DELETE /api/enrollments/:id
 router.delete("/:id", async (req, res) => {
   try {

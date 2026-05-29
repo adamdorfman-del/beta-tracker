@@ -16,6 +16,7 @@ export function EditFeatureModal({ feature, onClose, onSaved }: Props) {
     ownerPmmId:          feature.ownerPmmId ?? "",
     startDate:           feature.startDate ?? "",
     outreachDeadline:    feature.outreachDeadline ?? "",
+    projectedEndDate:    feature.projectedEndDate ?? "",
     targetTesterCount:   String(feature.targetTesterCount ?? 15),
     idealClientCriteria: feature.idealClientCriteria ?? "",
     betaGoal:            feature.betaGoal ?? "",
@@ -130,6 +131,16 @@ export function EditFeatureModal({ feature, onClose, onSaved }: Props) {
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Projected end date</label>
+            <input
+              type="date"
+              value={form.projectedEndDate}
+              onChange={(e) => set("projectedEndDate", e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm"
+            />
           </div>
 
           <div>

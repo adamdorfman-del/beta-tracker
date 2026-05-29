@@ -25,11 +25,14 @@ function fmt(date: string) {
 
 // ── activity config ───────────────────────────────────────────────────────────
 
-const ACTION_CONFIG: Record<string, { icon: React.ComponentType<any>; iconCls: string; label: string }> = {
-  nominated:       { icon: UserPlus,      iconCls: "bg-purple-100 text-purple-600", label: "Enrollment added" },
-  csm_approved:    { icon: CheckCircle2,  iconCls: "bg-green-100 text-green-600",   label: "Approval given" },
-  feedback_logged: { icon: MessageSquare, iconCls: "bg-blue-100 text-blue-600",     label: "Feedback logged" },
-  removed:         { icon: UserMinus,     iconCls: "bg-red-100 text-red-600",       label: "Client removed" },
+const ACTION_CONFIG: Record<string, { icon: React.ComponentType<any>; iconCls: string }> = {
+  nominated:       { icon: UserPlus,      iconCls: "bg-purple-100 text-purple-600" },
+  csm_approved:    { icon: CheckCircle2,  iconCls: "bg-green-100 text-green-600"   },
+  csm_rejected:    { icon: UserMinus,     iconCls: "bg-red-100 text-red-600"       },
+  feedback_logged: { icon: MessageSquare, iconCls: "bg-blue-100 text-blue-600"     },
+  removed:         { icon: UserMinus,     iconCls: "bg-red-100 text-red-600"       },
+  dropped:         { icon: UserMinus,     iconCls: "bg-red-100 text-red-600"       },
+  approved:        { icon: CheckCircle2,  iconCls: "bg-green-100 text-green-600"   },
 };
 
 function ActivityDescription({ act }: { act: any }) {
@@ -39,14 +42,20 @@ function ActivityDescription({ act }: { act: any }) {
   switch (act.action) {
     case "nominated":
       return <span className="text-sm text-gray-600">Enrollment added for {client}{feature ? <> in {feature}</> : null}</span>;
-    case "removed":
-      return <span className="text-sm text-gray-600">{client}{feature ? <> removed from {feature}</> : " removed"}</span>;
     case "csm_approved":
-      return <span className="text-sm text-gray-600">Approval given for {client}{feature ? <> in {feature}</> : null}</span>;
+    case "approved":
+      return <span className="text-sm text-gray-600">CSM approved {client}{feature ? <> for {feature}</> : null}</span>;
+    case "csm_rejected":
+      return <span className="text-sm text-gray-600">CSM rejected {client}{feature ? <> from {feature}</> : null}</span>;
+    case "removed":
+    case "dropped":
+      return <span className="text-sm text-gray-600">{client}{feature ? <> removed from {feature}</> : " removed"}</span>;
     case "feedback_logged":
       return <span className="text-sm text-gray-600">Feedback logged for {client}{feature ? <> in {feature}</> : null}</span>;
-    default:
-      return <span className="text-sm text-gray-600">{act.action.replace(/_/g, " ")} on {act.entityType}</span>;
+    default: {
+      const label = act.action.replace(/_/g, " ").replace(/^\w/, (c: string) => c.toUpperCase());
+      return <span className="text-sm text-gray-600">{label}{client ? <> for {client}</> : null}{feature ? <> in {feature}</> : null}</span>;
+    }
   }
 }
 
@@ -105,9 +114,10 @@ export default function DashboardPage() {
 
   const statCards = [
     { label: "Total Beta Features", value: totalFeatures,                                   href: "/features" },
-    { label: "Confirmed Testers", value: overview?.totalConfirmed ?? 0,                    href: "/features" },
-    { label: "Outreach Sent",     value: overview?.totalOutreachSent ?? 0,                 href: "/features" },
-    { label: "Avg Beta Duration", value: avgDuration != null ? `${avgDuration}d` : "—",    href: "/reports" },
+    { label: "Enrolled + Using",    value: overview?.totalInProgress ?? 0,                  href: "/features" },
+    { label: "Accepted",            value: overview?.totalAccepted ?? 0,                    href: "/features" },
+    { label: "Nominated",           value: overview?.totalNominated ?? 0,                   href: "/features" },
+    { label: "Avg Beta Duration",   value: avgDuration != null ? `${avgDuration}d` : "—",  href: "/reports" },
   ];
 
   // ── features by stage ──
@@ -116,6 +126,7 @@ export default function DashboardPage() {
   // ── sentiment ──
   const totals      = feedbackSummary?.totals ?? { total: 0, positive: 0, neutral: 0, negative: 0 };
   const posRate     = totals.total > 0 ? Math.round((totals.positive / totals.total) * 100) : 0;
+  const sentimentColor = posRate >= 80 ? '#1D9E75' : posRate >= 60 ? '#EF9F27' : '#E24B4A';
 
   // ── sentiment by beta ──
   const MAX_ROWS = 8;
@@ -141,7 +152,7 @@ export default function DashboardPage() {
       <h1 className="text-2xl font-semibold text-gray-900">Dashboard</h1>
 
       {/* Row 1 — stat cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 xl:grid-cols-5">
         {statCards.map(({ label, value, href }) => (
           <Link key={label} href={href}
             className="rounded-xl border border-gray-200 bg-white p-5 hover:border-gray-300 hover:bg-gray-50 transition-colors">
@@ -180,12 +191,14 @@ export default function DashboardPage() {
                     className="flex items-center justify-between py-2.5 hover:bg-gray-50 -mx-2 px-2 rounded-lg transition-colors">
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">{f.name}</p>
-                      <p className="text-xs text-gray-400">{fmt(f.startDate)}</p>
+                      <p className="text-xs text-gray-400">
+                        {(f as any).projectedEndDate ? `Ends ${fmt((f as any).projectedEndDate)}` : fmt(f.startDate)}
+                      </p>
                     </div>
                     <div className="flex items-center gap-3 ml-3 shrink-0">
                       <BetaStatusBadge status={f.status} />
                       <span className="text-xs text-gray-400 whitespace-nowrap">
-                        {f.enrolledCount ?? 0}/{f.targetTesterCount}
+                        {(f as any).enrollmentFunnel?.total ?? (f as any).filledCount ?? 0} enrolled
                       </span>
                     </div>
                   </Link>
@@ -206,15 +219,16 @@ export default function DashboardPage() {
               <p className="text-sm text-gray-400">No feedback logged yet.</p>
             ) : (
               <>
-                <p className="text-4xl font-bold text-green-600">{posRate}%</p>
+                <p className="text-4xl font-bold" style={{ color: sentimentColor }}>{posRate}%</p>
                 <p className="mt-1 text-xs text-gray-400">positive across all active betas</p>
                 <div className="mt-3 h-2 w-full rounded-full bg-gray-100 overflow-hidden">
-                  <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${posRate}%` }} />
+                  <div className="h-full rounded-full transition-all" style={{ width: `${posRate}%`, backgroundColor: sentimentColor }} />
                 </div>
-                <div className="mt-3 flex gap-4 text-xs text-gray-500">
+                <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-500">
                   <span><span className="font-medium text-green-700">{totals.positive}</span> positive</span>
                   <span><span className="font-medium text-red-700">{totals.negative}</span> negative</span>
                   <span><span className="font-medium text-gray-700">{totals.neutral}</span> neutral</span>
+                  <span><span className={`font-medium ${(totals.gating ?? 0) > 0 ? "text-red-700" : "text-gray-700"}`}>{totals.gating ?? 0}</span> blocking</span>
                 </div>
               </>
             )}
@@ -244,7 +258,12 @@ export default function DashboardPage() {
                       return (
                         <tr key={f.id} className="group">
                           <td className="py-2 pr-2 max-w-0">
-                            <span className="block truncate font-medium text-gray-900">{f.name}</span>
+                            <span
+                              className="block font-medium text-gray-900 break-words leading-snug"
+                              title={f.name.length > 40 ? f.name : undefined}
+                            >
+                              {f.name}
+                            </span>
                           </td>
                           <td className="py-2 pr-3 text-right text-gray-500 shrink-0">
                             {f.total > 0 ? f.total : <span className="text-gray-300">—</span>}

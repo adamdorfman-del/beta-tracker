@@ -10,6 +10,7 @@ import reportsRouter from "./reports";
 import usersRouter from "./users";
 import meRouter from "./me";
 import feedbackRouter from "./feedback";
+import testimonialsRouter from "./testimonials";
 import authRouter from "./auth";
 
 const router: IRouter = Router();
@@ -27,5 +28,6 @@ router.use("/batches", batchesRouter);
 router.use("/reports", reportsRouter);
 router.use("/users", usersRouter);
 router.use("/feedback", feedbackRouter);
+router.use("/testimonials", testimonialsRouter);
 
 export default router;

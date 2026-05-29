@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, pgEnum, boolean } from "drizzle-orm/pg-core";
 import { clientsTable } from "./clients.ts";
 import { betaFeaturesTable } from "./betaFeatures.ts";
 import { usersTable } from "./users.ts";
@@ -12,6 +12,9 @@ export const feedbackTable = pgTable("feedback", {
   sentiment: sentimentEnum("sentiment").notNull(),
   notes: text("notes"),
   feedbackProviderId: text("feedback_provider_id").notNull().references(() => usersTable.id),
+  isGatingRequest: boolean("is_gating_request").notNull().default(false),
+  gatingDescription: text("gating_description"),
+  jiraTicketUrl: text("jira_ticket_url"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -16,6 +16,47 @@ async function findFeature(slugOrId: string) {
 const router = Router();
 const pmOrAdmin = requireRole("pm", "admin");
 
+// ── Shared enrollment funnel ─────────────────────────────────────────────────
+// Single source of truth used by both list and detail endpoints so they can
+// never diverge. All four counts use the same active-enrollment definition:
+//   active = tester_status NOT IN ('dropped','cancelled')
+//             AND csm_approval_status != 'rejected'
+const FUNNEL_SELECT = {
+  nominated: sql<number>`COUNT(*) FILTER (WHERE ${betaEnrollmentsTable.testerStatus} IN ('nominated','csm_pending'))`,
+  approved:  sql<number>`COUNT(*) FILTER (WHERE ${betaEnrollmentsTable.testerStatus} IN ('csm_approved','outreach_sent','confirmed','active'))`,
+  enrolled:  sql<number>`COUNT(*) FILTER (WHERE ${betaEnrollmentsTable.testerStatus} = 'enrolled')`,
+  using:     sql<number>`COUNT(*) FILTER (WHERE ${betaEnrollmentsTable.testerStatus} = 'using')`,
+  accepted:  sql<number>`COUNT(*) FILTER (WHERE ${betaEnrollmentsTable.testerStatus} = 'accepted')`,
+  total:     sql<number>`COUNT(*) FILTER (WHERE ${betaEnrollmentsTable.testerStatus} NOT IN ('dropped','cancelled') AND ${betaEnrollmentsTable.csmApprovalStatus} != 'rejected')`,
+};
+
+function parseFunnel(row: any) {
+  return {
+    nominated: Number(row?.nominated ?? 0),
+    approved:  Number(row?.approved  ?? 0),
+    enrolled:  Number(row?.enrolled  ?? 0),
+    using:     Number(row?.using     ?? 0),
+    accepted:  Number(row?.accepted  ?? 0),
+    total:     Number(row?.total     ?? 0),
+  };
+}
+
+async function getEnrollmentFunnel(featureId: string) {
+  const [row] = await db.select(FUNNEL_SELECT)
+    .from(betaEnrollmentsTable)
+    .where(eq(betaEnrollmentsTable.featureId, featureId));
+  return parseFunnel(row);
+}
+
+async function getEnrollmentFunnels(featureIds: string[]) {
+  if (featureIds.length === 0) return {} as Record<string, ReturnType<typeof parseFunnel>>;
+  const rows = await db.select({ featureId: betaEnrollmentsTable.featureId, ...FUNNEL_SELECT })
+    .from(betaEnrollmentsTable)
+    .where(inArray(betaEnrollmentsTable.featureId, featureIds))
+    .groupBy(betaEnrollmentsTable.featureId);
+  return Object.fromEntries(rows.map(r => [r.featureId, parseFunnel(r)]));
+}
+
 // GET /api/features
 router.get("/", async (req, res) => {
   try {
@@ -33,7 +74,7 @@ router.get("/", async (req, res) => {
         case "status":  return isDesc
           ? desc(sql`CASE status WHEN 'draft' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'complete' THEN 3 ELSE 4 END`)
           : asc(sql`CASE status WHEN 'draft' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'complete' THEN 3 ELSE 4 END`);
-        case "slots":   return isDesc ? desc(betaFeaturesTable.targetTesterCount) : asc(betaFeaturesTable.targetTesterCount);
+        case "enrollment": return isDesc ? desc(betaFeaturesTable.targetTesterCount) : asc(betaFeaturesTable.targetTesterCount);
         case "pm":      return isDesc ? desc(betaFeaturesTable.ownerPmId)  : asc(betaFeaturesTable.ownerPmId);
         case "start":   return isDesc ? desc(betaFeaturesTable.startDate)  : asc(betaFeaturesTable.startDate);
         default:        return desc(betaFeaturesTable.createdAt);
@@ -42,14 +83,11 @@ router.get("/", async (req, res) => {
 
     const features = await db.select({
       ...betaFeaturesTable,
-      filledCount:            sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.tester_status NOT IN ('dropped','cancelled'))`,
-      enrolledCount:          sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.tester_status IN ('confirmed','active','completed'))`,
-      outreachCount:          sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.tester_status IN ('csm_approved','outreach_sent'))`,
-      pendingApprovalCount:   sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.csm_approval_status = 'pending')`,
-      fbTotal:                sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id)`,
-      fbPositive:             sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id AND fb.sentiment = 'positive')`,
-      fbNegative:             sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id AND fb.sentiment = 'negative')`,
-      fbNeutral:              sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id AND fb.sentiment = 'neutral')`,
+      pendingApprovalCount: sql<number>`(SELECT COUNT(*) FROM beta_enrollments e WHERE e.feature_id = "beta_features".id AND e.csm_approval_status = 'pending')`,
+      fbTotal:              sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id)`,
+      fbPositive:           sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id AND fb.sentiment = 'positive')`,
+      fbNegative:           sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id AND fb.sentiment = 'negative')`,
+      fbNeutral:            sql<number>`(SELECT COUNT(*) FROM feedback fb WHERE fb.feature_id = "beta_features".id AND fb.sentiment = 'neutral')`,
     }).from(betaFeaturesTable)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(orderExpr)
@@ -57,6 +95,8 @@ router.get("/", async (req, res) => {
 
     const [{ value: total }] = await db.select({ value: count() }).from(betaFeaturesTable)
       .where(conditions.length ? and(...conditions) : undefined);
+
+    const funnelMap = await getEnrollmentFunnels(features.map(f => f.id));
 
     // Enrich with owner names
     const allUserIds = [...new Set(features.flatMap(f => [f.ownerPmId, f.ownerPmmId]))];
@@ -79,6 +119,7 @@ router.get("/", async (req, res) => {
           neutral: fbNeutral,
           positiveRate: fbTotal > 0 ? fbPositive / fbTotal : null,
         },
+        enrollmentFunnel: funnelMap[f.id] ?? { nominated: 0, approved: 0, inProgress: 0, total: 0 },
       };
     });
 
@@ -92,7 +133,7 @@ router.get("/", async (req, res) => {
 // POST /api/features
 router.post("/", pmOrAdmin, async (req, res) => {
   try {
-    const { name, ownerPmId, ownerPmmId, startDate, outreachDeadline, idealClientCriteria, betaGoal, targetTesterCount, jiraEpicLink } = req.body;
+    const { name, ownerPmId, ownerPmmId, startDate, outreachDeadline, idealClientCriteria, betaGoal, targetTesterCount, jiraEpicLink, projectedEndDate } = req.body;
     if (!name || !ownerPmId || !ownerPmmId || !startDate || !outreachDeadline || !jiraEpicLink) {
       return err(res, "name, ownerPmId, ownerPmmId, startDate, outreachDeadline, and jiraEpicLink are required.");
     }
@@ -106,6 +147,7 @@ router.post("/", pmOrAdmin, async (req, res) => {
       jiraEpicLink,
       slug,
       targetTesterCount: targetTesterCount ?? 15,
+      projectedEndDate: projectedEndDate ?? null,
     }).returning();
     return ok(res, feature, 201);
   } catch (e) {
@@ -179,6 +221,9 @@ router.get("/:id", async (req, res) => {
       id:                   feedbackTable.id,
       sentiment:            feedbackTable.sentiment,
       notes:                feedbackTable.notes,
+      isGatingRequest:      feedbackTable.isGatingRequest,
+      gatingDescription:    feedbackTable.gatingDescription,
+      jiraTicketUrl:        feedbackTable.jiraTicketUrl,
       createdAt:            feedbackTable.createdAt,
       clientName:           clientsTable.name,
       feedbackProviderName: usersTable.name,
@@ -189,7 +234,9 @@ router.get("/:id", async (req, res) => {
       .orderBy(desc(feedbackTable.createdAt))
       .limit(5);
 
-    return ok(res, { ...feature, ownerPm, ownerPmm, enrollments: enrichedEnrollments, feedbackSummary, recentFeedback });
+    const enrollmentFunnel = await getEnrollmentFunnel(feature.id);
+
+    return ok(res, { ...feature, ownerPm, ownerPmm, enrollments: enrichedEnrollments, feedbackSummary, recentFeedback, enrollmentFunnel });
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);
@@ -216,6 +263,7 @@ router.put("/:id", pmOrAdmin, async (req, res) => {
     if (body.betaGoal !== undefined) update.betaGoal = body.betaGoal;
     if (body.outreachDeadline !== undefined) update.outreachDeadline = body.outreachDeadline;
     if (body.startDate !== undefined) update.startDate = body.startDate;
+    if (body.projectedEndDate !== undefined) update.projectedEndDate = body.projectedEndDate || null;
     if (body.targetTesterCount !== undefined) update.targetTesterCount = body.targetTesterCount;
     if (body.jiraEpicLink !== undefined) update.jiraEpicLink = body.jiraEpicLink;
     if (body.ownerPmId !== undefined) update.ownerPmId = body.ownerPmId;

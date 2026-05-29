@@ -8,6 +8,7 @@ async function runStartupMigrations() {
   await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_auth_at TIMESTAMP`);
   await db.execute(sql`ALTER TABLE beta_features ADD COLUMN IF NOT EXISTS beta_goal TEXT`);
   await db.execute(sql`ALTER TABLE beta_features ADD COLUMN IF NOT EXISTS slug TEXT`);
+  await db.execute(sql`ALTER TABLE beta_features ADD COLUMN IF NOT EXISTS projected_end_date DATE`);
   await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS beta_features_slug_unique ON beta_features (slug)`);
 
   const unsluggedFeatures = await db
@@ -39,8 +40,44 @@ async function runStartupMigrations() {
       feature_id TEXT NOT NULL REFERENCES beta_features(id),
       sentiment sentiment NOT NULL,
       notes TEXT,
-      logged_by TEXT NOT NULL REFERENCES users(id),
+      feedback_provider_id TEXT NOT NULL REFERENCES users(id),
+      is_gating_request BOOLEAN NOT NULL DEFAULT false,
+      gating_description TEXT,
+      jira_ticket_url TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+  // rename legacy logged_by column if present (old deployments)
+  await db.execute(sql`
+    DO $$ BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'feedback' AND column_name = 'logged_by'
+      ) THEN
+        ALTER TABLE feedback RENAME COLUMN logged_by TO feedback_provider_id;
+      END IF;
+    END $$
+  `);
+  await db.execute(sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS is_gating_request BOOLEAN NOT NULL DEFAULT false`);
+  await db.execute(sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS gating_description TEXT`);
+  await db.execute(sql`ALTER TABLE feedback ADD COLUMN IF NOT EXISTS jira_ticket_url TEXT`);
+  // add new tester_status enum values if missing
+  // ALTER TYPE ... ADD VALUE must run outside a transaction block (no DO wrapper)
+  await db.execute(sql`ALTER TYPE tester_status ADD VALUE IF NOT EXISTS 'enrolled'`);
+  await db.execute(sql`ALTER TYPE tester_status ADD VALUE IF NOT EXISTS 'using'`);
+  await db.execute(sql`ALTER TYPE tester_status ADD VALUE IF NOT EXISTS 'accepted'`);
+  // testimonials table
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS testimonials (
+      id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL REFERENCES clients(id),
+      feature_id TEXT NOT NULL REFERENCES beta_features(id),
+      quote TEXT NOT NULL,
+      context TEXT,
+      approved BOOLEAN NOT NULL DEFAULT false,
+      call_date DATE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      created_by_id TEXT NOT NULL REFERENCES users(id)
     )
   `);
 }

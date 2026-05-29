@@ -72,6 +72,7 @@ router.get("/summary", async (req, res) => {
       positive: sql<number>`SUM(CASE WHEN ${feedbackTable.sentiment} = 'positive' THEN 1 ELSE 0 END)`,
       neutral:  sql<number>`SUM(CASE WHEN ${feedbackTable.sentiment} = 'neutral'  THEN 1 ELSE 0 END)`,
       negative: sql<number>`SUM(CASE WHEN ${feedbackTable.sentiment} = 'negative' THEN 1 ELSE 0 END)`,
+      gating:   sql<number>`SUM(CASE WHEN ${feedbackTable.isGatingRequest} = true THEN 1 ELSE 0 END)`,
     }).from(feedbackTable).where(where);
 
     const byFeatureRows = await db.select({
@@ -94,6 +95,7 @@ router.get("/summary", async (req, res) => {
         positive: Number(totals?.positive ?? 0),
         neutral:  Number(totals?.neutral ?? 0),
         negative: Number(totals?.negative ?? 0),
+        gating:   Number(totals?.gating ?? 0),
       },
       byFeature: byFeatureRows.map((r) => ({
         ...r,
@@ -118,15 +120,18 @@ router.get("/", async (req, res) => {
     const where = conditions.length ? and(...conditions) : undefined;
 
     const rows = await db.select({
-      id:          feedbackTable.id,
-      sentiment:   feedbackTable.sentiment,
-      notes:       feedbackTable.notes,
-      createdAt:   feedbackTable.createdAt,
-      clientId:    feedbackTable.clientId,
-      clientName:  clientsTable.name,
-      featureId:   feedbackTable.featureId,
-      featureName: betaFeaturesTable.name,
-      featureSlug: betaFeaturesTable.slug,
+      id:               feedbackTable.id,
+      sentiment:        feedbackTable.sentiment,
+      notes:            feedbackTable.notes,
+      isGatingRequest:   feedbackTable.isGatingRequest,
+      gatingDescription: feedbackTable.gatingDescription,
+      jiraTicketUrl:     feedbackTable.jiraTicketUrl,
+      createdAt:         feedbackTable.createdAt,
+      clientId:         feedbackTable.clientId,
+      clientName:       clientsTable.name,
+      featureId:        feedbackTable.featureId,
+      featureName:      betaFeaturesTable.name,
+      featureSlug:      betaFeaturesTable.slug,
       feedbackProviderId:   feedbackTable.feedbackProviderId,
       feedbackProviderName: usersTable.name,
     })
@@ -159,12 +164,18 @@ router.post("/", async (req, res) => {
       return err(res, "Forbidden", 403);
     }
 
-    const { clientId, featureId, sentiment, notes } = req.body;
+    const { clientId, featureId, sentiment, notes, isGatingRequest, gatingDescription, jiraTicketUrl } = req.body;
     if (!clientId || !featureId || !sentiment) {
       return err(res, "clientId, featureId, and sentiment are required.");
     }
     if (!["positive", "neutral", "negative"].includes(sentiment)) {
       return err(res, "sentiment must be positive, neutral, or negative.");
+    }
+    if (isGatingRequest && !gatingDescription?.trim()) {
+      return err(res, "gatingDescription is required when isGatingRequest is true.");
+    }
+    if (jiraTicketUrl && !String(jiraTicketUrl).startsWith("https://")) {
+      return err(res, "jiraTicketUrl must start with https://");
     }
 
     const [entry] = await db.insert(feedbackTable).values({
@@ -173,6 +184,9 @@ router.post("/", async (req, res) => {
       featureId,
       sentiment,
       notes: notes ?? null,
+      isGatingRequest: isGatingRequest === true,
+      gatingDescription: isGatingRequest ? (gatingDescription?.trim() || null) : null,
+      jiraTicketUrl: jiraTicketUrl || null,
       feedbackProviderId: currentUser.id,
     }).returning();
 
@@ -185,6 +199,62 @@ router.post("/", async (req, res) => {
     });
 
     return ok(res, entry, 201);
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// PUT /api/feedback/:id
+router.put("/:id", async (req, res) => {
+  try {
+    const currentUser = await getCurrentDbUser(req);
+    if (!currentUser) return err(res, "Unauthorized", 401);
+
+    const [entry] = await db.select().from(feedbackTable).where(eq(feedbackTable.id, req.params.id));
+    if (!entry) return err(res, "Not found.", 404);
+
+    const canEdit = currentUser.role === "admin" || currentUser.role === "pm" || entry.feedbackProviderId === currentUser.id;
+    if (!canEdit) return err(res, "Forbidden", 403);
+
+    const { sentiment, notes, feedbackProviderId, isGatingRequest, gatingDescription, jiraTicketUrl } = req.body;
+    if (sentiment && !["positive", "neutral", "negative"].includes(sentiment)) {
+      return err(res, "sentiment must be positive, neutral, or negative.");
+    }
+    if (jiraTicketUrl && !String(jiraTicketUrl).startsWith("https://")) {
+      return err(res, "jiraTicketUrl must start with https://");
+    }
+
+    const update: Record<string, unknown> = {};
+    if (sentiment !== undefined)           update.sentiment           = sentiment;
+    if (notes !== undefined)               update.notes               = notes ?? null;
+    if (feedbackProviderId !== undefined)  update.feedbackProviderId  = feedbackProviderId;
+    if (isGatingRequest !== undefined)     update.isGatingRequest     = isGatingRequest === true;
+    if (gatingDescription !== undefined)   update.gatingDescription   = isGatingRequest ? (gatingDescription?.trim() || null) : null;
+    if (jiraTicketUrl !== undefined)       update.jiraTicketUrl       = jiraTicketUrl || null;
+
+    const [updated] = await db.update(feedbackTable).set(update as any).where(eq(feedbackTable.id, req.params.id)).returning();
+    return ok(res, updated);
+  } catch (e) {
+    req.log.error(e);
+    return err(res, "Internal error", 500);
+  }
+});
+
+// DELETE /api/feedback/:id
+router.delete("/:id", async (req, res) => {
+  try {
+    const currentUser = await getCurrentDbUser(req);
+    if (!currentUser) return err(res, "Unauthorized", 401);
+
+    const [entry] = await db.select().from(feedbackTable).where(eq(feedbackTable.id, req.params.id));
+    if (!entry) return err(res, "Not found.", 404);
+
+    const canDelete = currentUser.role === "admin" || currentUser.role === "pm" || entry.feedbackProviderId === currentUser.id;
+    if (!canDelete) return err(res, "Forbidden", 403);
+
+    await db.delete(feedbackTable).where(eq(feedbackTable.id, req.params.id));
+    return res.status(204).end();
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);

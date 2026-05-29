@@ -1,5 +1,5 @@
 export type BetaStatus = "draft" | "in_progress" | "complete";
-export type TesterStatus = "nominated" | "csm_pending" | "csm_approved" | "outreach_sent" | "confirmed" | "active" | "completed" | "dropped" | "cancelled";
+export type TesterStatus = "nominated" | "csm_pending" | "csm_approved" | "outreach_sent" | "confirmed" | "active" | "completed" | "dropped" | "cancelled" | "enrolled" | "using" | "accepted";
 export type ApprovalStatus = "pending" | "approved" | "rejected";
 export type BatchStatus = "pending" | "ready" | "sent";
 export type HealthStatus = "green" | "yellow" | "red";
@@ -28,6 +28,7 @@ export interface BetaFeature {
   idealClientCriteria: string | null;
   betaGoal: string | null;
   outreachDeadline: string;
+  projectedEndDate: string | null;
   clonedFromId: string | null;
   createdAt: string;
   ownerPm?: User;

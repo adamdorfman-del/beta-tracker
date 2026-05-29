@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { api } from "@/lib/api";
 import { BetaStatusBadge } from "@/components/StatusBadge";
-import { SlotFill } from "@/components/SlotFill";
+import { MiniFunnelBar } from "@/components/FunnelBar";
 import type { BetaFeature, BetaStatus } from "@/lib/types";
 import { NewFeatureModal } from "@/components/NewFeatureModal";
 import { useCurrentUser, canWrite } from "@/hooks/useCurrentUser";
@@ -168,11 +168,11 @@ export default function FeaturesPage() {
             <thead className="bg-gray-50">
               <tr>
                 {([
-                  { key: "name",     label: "Feature",   cls: "" },
-                  { key: "status",   label: "Status",    cls: "hidden sm:table-cell" },
-                  { key: "slots",    label: "Slots",     cls: "hidden md:table-cell" },
-                  { key: "feedback", label: "Feedback",  cls: "hidden lg:table-cell" },
-                  { key: "pm",       label: "Owner PM",  cls: "hidden xl:table-cell" },
+                  { key: "name",       label: "Feature",    cls: "" },
+                  { key: "status",     label: "Status",     cls: "hidden sm:table-cell" },
+                  { key: "enrollment", label: "Enrollment", cls: "hidden md:table-cell" },
+                  { key: "feedback",   label: "Feedback",   cls: "hidden lg:table-cell" },
+                  { key: "pm",         label: "Owner PM",   cls: "hidden xl:table-cell" },
                 ] as const).map(({ key, label, cls }) => (
                   <th key={key}
                     className={`px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-gray-500 cursor-pointer select-none hover:text-gray-700 ${cls}`}
@@ -188,9 +188,7 @@ export default function FeaturesPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {features.map((f) => {
-                const filled   = Number((f as any).filledCount   ?? 0);
-                const enrolled = Number((f as any).enrolledCount ?? 0);
-                const outreach = Number((f as any).outreachCount ?? 0);
+                const funnel = (f as any).enrollmentFunnel ?? { nominated: 0, approved: 0, enrolled: 0, using: 0, accepted: 0, total: 0 };
                 const durationDays = f.closedAt
                   ? Math.round((new Date(f.closedAt).getTime() - new Date(f.startDate).getTime()) / 86400000)
                   : Math.round((Date.now() - new Date(f.startDate).getTime()) / 86400000);
@@ -199,7 +197,13 @@ export default function FeaturesPage() {
                     <td className="px-4 py-3">
                       <Link href={`/features/${(f as any).slug ?? f.id}`} className="block">
                         <p className="text-sm font-medium text-gray-900 hover:text-blue-600">{f.name}</p>
-                        <p className="text-xs text-gray-400">{durationDays}d elapsed</p>
+                        {(f as any).projectedEndDate ? (
+                          <p className={`text-xs ${new Date((f as any).projectedEndDate) < new Date() ? "text-red-500" : "text-gray-400"}`}>
+                            Ends {new Date((f as any).projectedEndDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-gray-400">{durationDays}d elapsed</p>
+                        )}
                       </Link>
                     </td>
                     <td className="px-4 py-3 hidden sm:table-cell">
@@ -223,7 +227,9 @@ export default function FeaturesPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 hidden md:table-cell"><SlotFill enrolled={enrolled} outreach={outreach} filled={filled} target={f.targetTesterCount} /></td>
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <MiniFunnelBar funnel={funnel} />
+                    </td>
                     <td className="px-4 py-3 hidden lg:table-cell"><FeedbackSummaryCell summary={(f as any).feedbackSummary} /></td>
                     <td className="px-4 py-3 hidden xl:table-cell"><span className="text-sm text-gray-600">{f.ownerPm?.name ?? "—"}</span></td>
                     <td className="px-4 py-3 text-right">

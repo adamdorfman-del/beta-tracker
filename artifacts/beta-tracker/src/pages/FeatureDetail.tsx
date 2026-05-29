@@ -1,14 +1,16 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { api } from "@/lib/api";
-import { BetaStatusBadge, TesterStatusBadge, ApprovalStatusBadge } from "@/components/StatusBadge";
+import { BetaStatusBadge, TesterStatusBadge } from "@/components/StatusBadge";
 import { HealthDot } from "@/components/HealthDot";
-import { SlotFill } from "@/components/SlotFill";
 import { EditFeatureModal } from "@/components/EditFeatureModal";
+import { TranscriptImportModal } from "@/components/TranscriptImportModal";
+import { EnrollmentFunnelCard } from "@/components/FunnelBar";
 import type { BetaFeature, BetaEnrollment } from "@/lib/types";
 import { useCurrentUser, canWrite } from "@/hooks/useCurrentUser";
 import { useInfiniteScroll } from "@/hooks/useInfiniteScroll";
 import { MultiSelect } from "@/components/MultiSelect";
+import { FeedbackDetailModal } from "@/components/FeedbackDetailModal";
 
 function ApproveRejectButtons({ enrollmentId, onDone }: { enrollmentId: string; onDone: () => void }) {
   const [showReject, setShowReject] = useState(false);
@@ -165,14 +167,249 @@ function SentimentBadge({ sentiment }: { sentiment: string }) {
   );
 }
 
-function EnrollmentFeedback({ clientId, featureId }: { clientId: string; featureId: string }) {
+type Sentiment = "positive" | "neutral" | "negative";
+
+function PencilIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+      <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918a4 4 0 01-1.343.885l-3.154 1.262a.5.5 0 01-.63-.63z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+      <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+    </svg>
+  );
+}
+
+const EDITABLE_STATUSES = new Set(["csm_approved", "outreach_sent", "confirmed", "active", "enrolled", "using", "accepted", "completed"]);
+const ENROLLED_STAGE = new Set(["enrolled", "using", "accepted"]);
+const MOVABLE_TARGETS = ["enrolled", "using", "accepted"] as const;
+
+function StatusCell({ enrollment, canEdit, onUpdated }: { enrollment: any; canEdit: boolean; onUpdated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [dropPos, setDropPos] = useState<{ top: number; left: number } | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+
+  const status: string = enrollment.testerStatus;
+  const canMove = EDITABLE_STATUSES.has(status) && canEdit;
+
+  useEffect(() => {
+    if (!open) return;
+    function handleClose(e: MouseEvent) {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t) || dropRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClose);
+    return () => document.removeEventListener("mousedown", handleClose);
+  }, [open]);
+
+  function openMenu() {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    setDropPos({ top: r.bottom + 4, left: r.left });
+    setOpen(o => !o);
+  }
+
+  async function changeStatus(next: string) {
+    setOpen(false);
+    if (next === status) return;
+    setUpdating(true);
+    try {
+      await api.enrollments.patch(enrollment.id, { status: next });
+      onUpdated();
+    } catch (e: any) {
+      alert(e.data?.error ?? "Failed to update status");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
+  const options = ENROLLED_STAGE.has(status)
+    ? MOVABLE_TARGETS.filter(s => s !== status)
+    : [...MOVABLE_TARGETS];
+
+  if (!canMove) return <TesterStatusBadge status={enrollment.testerStatus} />;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        onClick={openMenu}
+        disabled={updating}
+        className="group inline-flex items-center gap-0.5 cursor-pointer disabled:opacity-50"
+      >
+        <TesterStatusBadge status={enrollment.testerStatus} />
+        <svg
+          className="h-3 w-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+          viewBox="0 0 16 16" fill="currentColor"
+          aria-hidden="true"
+        >
+          <path d="M8 10L4 6h8l-4 4z" />
+        </svg>
+      </button>
+      {open && dropPos && (
+        <div
+          ref={dropRef}
+          style={{ position: "fixed", top: dropPos.top, left: dropPos.left }}
+          className="z-50 rounded-lg border border-gray-200 bg-white shadow-lg py-1 min-w-[130px]"
+        >
+          {options.map(s => (
+            <button
+              key={s}
+              onClick={() => changeStatus(s)}
+              className="flex items-center w-full px-3 py-1.5 hover:bg-gray-50 text-left"
+            >
+              <TesterStatusBadge status={s} />
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function EditFeedbackModal({ entry, onClose, onSaved, focusJira = false }: {
+  entry: any; onClose: () => void; onSaved: () => void; focusJira?: boolean;
+}) {
+  const [sentiment, setSentiment] = useState<Sentiment>(entry.sentiment);
+  const [notes, setNotes] = useState(entry.notes ?? "");
+  const [providerId, setProviderId] = useState(entry.feedbackProviderId ?? "");
+  const [isGatingRequest, setIsGatingRequest] = useState<boolean>(entry.isGatingRequest ?? false);
+  const [gatingDescription, setGatingDescription] = useState(entry.gatingDescription ?? "");
+  const [jiraTicketUrl, setJiraTicketUrl] = useState(entry.jiraTicketUrl ?? "");
+  const [users, setUsers] = useState<any[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const jiraRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    api.users.list().then((d: any) => setUsers(d.users ?? d ?? [])).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (focusJira && isGatingRequest) setTimeout(() => jiraRef.current?.focus(), 50);
+  }, [focusJira, isGatingRequest]);
+
+  async function save() {
+    if (isGatingRequest && !gatingDescription.trim()) {
+      setError("Gating description is required when marking as a blocking feature request."); return;
+    }
+    if (jiraTicketUrl && !jiraTicketUrl.startsWith("https://")) {
+      setError("JIRA ticket URL must start with https://"); return;
+    }
+    setSaving(true); setError("");
+    try {
+      await api.feedback.update(entry.id, {
+        sentiment, notes: notes || null, feedbackProviderId: providerId,
+        isGatingRequest,
+        gatingDescription: isGatingRequest ? (gatingDescription.trim() || null) : null,
+        jiraTicketUrl: jiraTicketUrl || null,
+      });
+      onSaved(); onClose();
+    } catch (e: any) {
+      setError(e?.data?.error ?? "Failed to save");
+    } finally { setSaving(false); }
+  }
+
+  const SENTIMENTS: Sentiment[] = ["positive", "neutral", "negative"];
+  const SENTIMENT_STYLE_MAP: Record<Sentiment, string> = {
+    positive: "bg-green-100 text-green-700",
+    neutral:  "bg-gray-100 text-gray-600",
+    negative: "bg-red-100 text-red-700",
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+        <div className="px-6 py-5 border-b border-gray-100">
+          <h2 className="text-base font-semibold text-gray-900">Edit Feedback</h2>
+        </div>
+        <div className="px-6 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          <div><p className="text-xs font-medium text-gray-500 mb-1">Client</p><p className="text-sm text-gray-900">{entry.clientName}</p></div>
+          <div><p className="text-xs font-medium text-gray-500 mb-1">Feature</p><p className="text-sm text-gray-900">{entry.featureName}</p></div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1">Sentiment</p>
+            <div className="flex overflow-hidden rounded-lg border border-gray-200">
+              {SENTIMENTS.map((s) => (
+                <button key={s} type="button" onClick={() => setSentiment(s)}
+                  className={`flex-1 py-1.5 text-sm font-medium transition-colors ${sentiment === s ? SENTIMENT_STYLE_MAP[s] : "text-gray-400 hover:bg-gray-50"}`}>
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1">Notes</p>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none outline-none focus:border-blue-400" />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 mb-1">Feedback provider</p>
+            <select value={providerId} onChange={(e) => setProviderId(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400 bg-white">
+              {users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={isGatingRequest} onChange={(e) => setIsGatingRequest(e.target.checked)}
+              className="mt-0.5 rounded border-gray-300 text-red-600 focus:ring-red-500" />
+            <span className="text-sm text-gray-700">This feedback includes a feature request blocking adoption</span>
+          </label>
+          {isGatingRequest && (
+            <>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">Gating description <span className="text-red-500">*</span></p>
+                <textarea value={gatingDescription} onChange={(e) => setGatingDescription(e.target.value)} rows={3}
+                  placeholder="Describe the feature request that is blocking this client from fully adopting the beta."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm resize-none outline-none focus:border-blue-400" />
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 mb-1">JIRA ticket URL <span className="text-gray-400">(optional)</span></p>
+                <input ref={jiraRef} type="url" value={jiraTicketUrl} onChange={(e) => setJiraTicketUrl(e.target.value)}
+                  placeholder="https://birdeye.atlassian.net/..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400" />
+              </div>
+            </>
+          )}
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose} disabled={saving}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EnrollmentFeedback({ clientId, clientName, featureId, featureName, testerStatus }: { clientId: string; clientName?: string; featureId: string; featureName?: string; testerStatus?: string }) {
   const currentUser = useCurrentUser();
   const [items, setItems] = useState<any[]>([]);
   const [loadingFb, setLoadingFb] = useState(true);
-  const [sentiment, setSentiment] = useState<"positive" | "neutral" | "negative" | null>(null);
+  const [sentiment, setSentiment] = useState<Sentiment | null>(null);
   const [notes, setNotes] = useState("");
+  const [isGatingRequest, setIsGatingRequest] = useState(false);
+  const [gatingDescription, setGatingDescription] = useState("");
+  const [jiraTicketUrl, setJiraTicketUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [fbError, setFbError] = useState("");
+  const [editEntry, setEditEntry] = useState<any>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [showImport, setShowImport] = useState(false);
 
   function loadFeedback() {
     setLoadingFb(true);
@@ -188,9 +425,20 @@ function EnrollmentFeedback({ clientId, featureId }: { clientId: string; feature
     e.preventDefault();
     setFbError(""); setSubmitting(true);
     if (!sentiment) { setFbError("Select a sentiment."); setSubmitting(false); return; }
+    if (isGatingRequest && !gatingDescription.trim()) {
+      setFbError("Gating description is required."); setSubmitting(false); return;
+    }
+    if (isGatingRequest && jiraTicketUrl && !jiraTicketUrl.startsWith("https://")) {
+      setFbError("JIRA ticket URL must start with https://"); setSubmitting(false); return;
+    }
     try {
-      await api.feedback.create({ clientId, featureId, sentiment, notes });
-      setNotes(""); setSentiment(null);
+      await api.feedback.create({
+        clientId, featureId, sentiment, notes,
+        isGatingRequest,
+        gatingDescription: isGatingRequest ? (gatingDescription.trim() || null) : null,
+        jiraTicketUrl: isGatingRequest ? (jiraTicketUrl || null) : null,
+      });
+      setNotes(""); setSentiment(null); setIsGatingRequest(false); setGatingDescription(""); setJiraTicketUrl("");
       loadFeedback();
     } catch (err: any) {
       setFbError(err.data?.error ?? "Failed to save");
@@ -203,47 +451,142 @@ function EnrollmentFeedback({ clientId, featureId }: { clientId: string; feature
 
   return (
     <div className="mt-3 pt-3 border-t border-gray-200">
-      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Feedback</p>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Feedback</p>
+          {testerStatus && (
+            <TesterStatusBadge status={testerStatus as any} />
+          )}
+        </div>
+        {canLog && (
+          <button
+            onClick={() => setShowImport(true)}
+            className="text-[10px] font-medium text-blue-600 hover:text-blue-800 shrink-0"
+          >
+            Import from transcript
+          </button>
+        )}
+      </div>
       {loadingFb ? (
         <p className="text-xs text-gray-400">Loading…</p>
       ) : items.length === 0 ? (
         <p className="text-xs text-gray-400 mb-2">No feedback logged yet.</p>
       ) : (
         <div className="space-y-1 mb-2">
-          {items.map((fb: any) => (
-            <div key={fb.id} className="flex items-center gap-2 text-xs">
-              <SentimentBadge sentiment={fb.sentiment} />
-              <span className="flex-1 truncate text-gray-700">
-                {fb.notes || <span className="italic text-gray-400">No notes</span>}
-              </span>
-              <span className="flex-shrink-0 text-gray-400">
-                {fb.feedbackProviderName} · {new Date(fb.createdAt).toLocaleDateString()}
-              </span>
-            </div>
-          ))}
+          {items.map((fb: any) => {
+            const isDeleting = deleteId === fb.id;
+            return (
+              <div key={fb.id}>
+                {isDeleting ? (
+                  <div className="flex items-center gap-2 text-xs py-0.5">
+                    <span className="text-gray-500">Delete this? Cannot be undone.</span>
+                    <button onClick={() => setDeleteId(null)} disabled={deleting}
+                      className="rounded border border-gray-200 px-2 py-0.5 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+                      Cancel
+                    </button>
+                    <button disabled={deleting} onClick={async () => {
+                      setDeleting(true);
+                      try {
+                        await api.feedback.remove(fb.id);
+                        setItems(prev => prev.filter((x: any) => x.id !== fb.id));
+                        setDeleteId(null);
+                      } catch { /* ignore */ } finally { setDeleting(false); }
+                    }} className="rounded bg-red-600 px-2 py-0.5 font-medium text-white hover:bg-red-700 disabled:opacity-50">
+                      {deleting ? "…" : "Delete"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-xs group">
+                    <SentimentBadge sentiment={fb.sentiment} />
+                    {fb.isGatingRequest && (
+                      <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 shrink-0">Blocking</span>
+                    )}
+                    <span className="flex-1 truncate text-gray-700">
+                      {fb.notes || <span className="italic text-gray-400">No notes</span>}
+                    </span>
+                    {fb.jiraTicketUrl && (
+                      <a href={fb.jiraTicketUrl} target="_blank" rel="noopener noreferrer"
+                        className="shrink-0 text-blue-600 hover:text-blue-800 font-medium">
+                        JIRA →
+                      </a>
+                    )}
+                    <span className="flex-shrink-0 text-gray-400">
+                      {fb.feedbackProviderName} · {new Date(fb.createdAt).toLocaleDateString()}
+                    </span>
+                    {canLog && (
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => setEditEntry(fb)} title="Edit"
+                          className="rounded p-0.5 text-gray-300 hover:text-blue-600 hover:bg-blue-50">
+                          <PencilIcon />
+                        </button>
+                        <button onClick={() => setDeleteId(fb.id)} title="Delete"
+                          className="rounded p-0.5 text-gray-300 hover:text-red-600 hover:bg-red-50">
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       {canLog && (
-        <form onSubmit={submit} className="flex items-center gap-2 flex-wrap">
-          <div className="flex overflow-hidden rounded border border-gray-200">
-            {(["positive", "neutral", "negative"] as const).map((s) => (
-              <button key={s} type="button" onClick={() => setSentiment(s)}
-                className={`px-2 py-1 text-[10px] font-medium transition-colors ${
-                  sentiment === s ? (SENTIMENT_STYLES[s] ?? "bg-gray-100 text-gray-700") : "text-gray-400 hover:bg-gray-50"
-                }`}>
-                {s.charAt(0).toUpperCase() + s.slice(1)}
-              </button>
-            ))}
+        <form onSubmit={submit} className="space-y-1.5">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex overflow-hidden rounded border border-gray-200">
+              {(["positive", "neutral", "negative"] as const).map((s) => (
+                <button key={s} type="button" onClick={() => setSentiment(s)}
+                  className={`px-2 py-1 text-[10px] font-medium transition-colors ${
+                    sentiment === s ? (SENTIMENT_STYLES[s] ?? "bg-gray-100 text-gray-700") : "text-gray-400 hover:bg-gray-50"
+                  }`}>
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+              ))}
+            </div>
+            <input value={notes} onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes (optional)"
+              className="min-w-0 flex-1 rounded border border-gray-200 px-2 py-1 text-xs outline-none focus:border-blue-300" />
+            <button type="submit" disabled={submitting}
+              className="rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+              {submitting ? "…" : "Log"}
+            </button>
           </div>
-          <input value={notes} onChange={(e) => setNotes(e.target.value)}
-            placeholder="Notes (optional)"
-            className="min-w-0 flex-1 rounded border border-gray-200 px-2 py-1 text-xs outline-none focus:border-blue-300" />
-          <button type="submit" disabled={submitting}
-            className="rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-            {submitting ? "…" : "Log"}
-          </button>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={isGatingRequest} onChange={(e) => setIsGatingRequest(e.target.checked)}
+              className="rounded border-gray-300 text-red-600 focus:ring-red-500" />
+            <span className="text-[10px] text-gray-600">Blocking feature request</span>
+          </label>
+          {isGatingRequest && (
+            <>
+              <textarea value={gatingDescription} onChange={(e) => setGatingDescription(e.target.value)} rows={2}
+                placeholder="Describe the feature request blocking adoption (required)"
+                className="w-full rounded border border-gray-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none" />
+              <input type="url" value={jiraTicketUrl} onChange={(e) => setJiraTicketUrl(e.target.value)}
+                placeholder="JIRA ticket URL (https://...)"
+                className="w-full rounded border border-gray-200 px-2 py-1 text-xs outline-none focus:border-blue-300" />
+            </>
+          )}
           {fbError && <p className="w-full text-xs text-red-600">{fbError}</p>}
         </form>
+      )}
+      {editEntry && (
+        <EditFeedbackModal
+          entry={editEntry}
+          onClose={() => setEditEntry(null)}
+          onSaved={loadFeedback}
+        />
+      )}
+      {showImport && (
+        <TranscriptImportModal
+          defaultClientId={clientId}
+          defaultClientName={clientName}
+          defaultFeatureId={featureId}
+          defaultFeatureName={featureName}
+          onClose={() => setShowImport(false)}
+          onSaved={loadFeedback}
+        />
       )}
     </div>
   );
@@ -423,6 +766,9 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   const [enrollSortCol, setEnrollSortCol] = useState("");
   const [enrollSortDir, setEnrollSortDir] = useState<"asc" | "desc">("asc");
   const [removedOpen, setRemovedOpen] = useState(false);
+  const [idealExpanded, setIdealExpanded] = useState(false);
+  const [goalExpanded, setGoalExpanded] = useState(false);
+  const [feedbackDetail, setFeedbackDetail] = useState<any>(null);
   const [, navigate] = useLocation();
 
   function toggleEnrollSort(col: string) {
@@ -465,17 +811,11 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   const removedEnrollments = enrollments.filter(
     (e) => ["dropped", "cancelled"].includes(e.testerStatus) || e.csmApprovalStatus === "rejected"
   );
-  const filled   = enrollments.filter((e) => !["dropped", "cancelled"].includes(e.testerStatus)).length;
-  const enrolled = enrollments.filter((e) => ["confirmed", "active", "completed"].includes(e.testerStatus)).length;
-  const outreach = enrollments.filter((e) => ["csm_approved", "outreach_sent"].includes(e.testerStatus)).length;
-  const pendingEnrollments = enrollments.filter((e) => e.csmApprovalStatus === "pending");
-  const csmPending = pendingEnrollments.length;
+  const funnel = (feature as any).enrollmentFunnel ?? { nominated: 0, approved: 0, enrolled: 0, using: 0, accepted: 0, total: 0 };
   const isClosed = feature.status === "complete";
 
   const fbSummary = (feature as any).feedbackSummary ?? { total: 0, positive: 0, negative: 0, neutral: 0, positiveRate: null };
   const recentFeedback: any[] = (feature as any).recentFeedback ?? [];
-  const fbPct   = fbSummary.positiveRate !== null ? Math.round(fbSummary.positiveRate * 100) : null;
-  const fbColor = fbPct !== null ? (fbPct >= 80 ? '#1D9E75' : fbPct >= 60 ? '#EF9F27' : '#E24B4A') : undefined;
 
   const MANUAL_STATUSES = [
     { value: "draft",       label: "Draft" },
@@ -505,8 +845,8 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
           <Link href="/features" className="text-sm text-gray-400 hover:text-gray-600">← Beta Features</Link>
           <h1 className="mt-1 text-2xl font-semibold text-gray-900">{feature.name}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-gray-500">
@@ -531,6 +871,9 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
             <span>PM: {(feature as any).ownerPm?.name}</span>
             <span>PMM: {(feature as any).ownerPmm?.name}</span>
             <span>Start: {new Date(feature.startDate).toLocaleDateString()}</span>
+            {(feature as any).projectedEndDate && (
+              <span>End: {new Date((feature as any).projectedEndDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+            )}
             {feature.closedAt && <span>Closed: {new Date(feature.closedAt).toLocaleDateString()}</span>}
             {(feature as any).jiraEpicLink && (
               <a href={(feature as any).jiraEpicLink} target="_blank" rel="noopener noreferrer"
@@ -539,15 +882,52 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
               </a>
             )}
           </div>
+          {((feature as any).idealClientCriteria || feature.betaGoal || canWrite(currentUser)) && (
+            <div className="mt-1 flex items-baseline gap-3 text-sm text-gray-500">
+              {(feature as any).idealClientCriteria && (
+                <>
+                  <span className="shrink-0 text-gray-400">Ideal customer:</span>
+                  <button
+                    onClick={() => setIdealExpanded(v => !v)}
+                    className={`min-w-0 text-left hover:text-gray-700 cursor-pointer${idealExpanded ? "" : " truncate"}`}
+                    title={idealExpanded ? undefined : (feature as any).idealClientCriteria}
+                  >
+                    {(feature as any).idealClientCriteria}
+                  </button>
+                </>
+              )}
+              {(feature.betaGoal || canWrite(currentUser)) && (
+                <>
+                  <span className="shrink-0 text-gray-400">Goal:</span>
+                  {feature.betaGoal ? (
+                    <button
+                      onClick={() => setGoalExpanded(v => !v)}
+                      className={`min-w-0 text-left hover:text-gray-700 cursor-pointer${goalExpanded ? "" : " truncate"}`}
+                      title={goalExpanded ? undefined : feature.betaGoal}
+                    >
+                      {feature.betaGoal}
+                    </button>
+                  ) : (
+                    <button onClick={() => setEditOpen(true)} className="shrink-0 text-amber-600 hover:text-amber-700">
+                      Add beta goal
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
         </div>
         {canWrite(currentUser) && !isClosed && (
           <button onClick={() => setEditOpen(true)}
-            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
+            className="shrink-0 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50">
             Edit
           </button>
         )}
       </div>
 
+      {feedbackDetail && (
+        <FeedbackDetailModal entry={feedbackDetail} onClose={() => setFeedbackDetail(null)} />
+      )}
       {editOpen && (
         <EditFeatureModal
           feature={feature}
@@ -563,49 +943,24 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
         />
       )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {[
-          { label: "Slots",          value: <SlotFill enrolled={enrolled} outreach={outreach} filled={filled} target={feature.targetTesterCount} /> },
-          { label: "CSM Pending",    value: <span className={`text-2xl font-bold ${csmPending > 0 ? "text-amber-600" : "text-gray-900"}`}>{csmPending}</span> },
-          { label: "Total Nominated",value: <span className="text-2xl font-bold text-gray-900">{enrollments.length}</span> },
-          { label: "Outreach Sent",  value: <span className="text-2xl font-bold text-gray-900">{enrollments.filter(e => e.testerStatus === "outreach_sent").length}</span> },
-        ].map(({ label, value }) => (
-          <div key={label} className="rounded-xl border border-gray-200 bg-white p-4">
-            <p className="text-xs text-gray-400 uppercase tracking-wide">{label}</p>
-            <div className="mt-1">{value}</div>
-          </div>
-        ))}
-        <div className="rounded-xl border border-gray-200 bg-white p-4">
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Feedback</p>
-          <div className="mt-1">
-            {fbSummary.total === 0 ? (
-              <span className="text-sm text-gray-400">None yet</span>
-            ) : (
-              <div className="space-y-1">
-                <span className="text-2xl font-bold text-gray-900">{fbSummary.total}</span>
-                {fbPct !== null && (
-                  <div className="flex items-center gap-1.5">
-                    <div className="h-1.5 w-16 rounded-full bg-gray-100 overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${fbPct}%`, backgroundColor: fbColor }} />
-                    </div>
-                    <span className="text-xs font-medium tabular-nums" style={{ color: fbColor }}>{fbPct}% positive</span>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      <EnrollmentFunnelCard funnel={funnel} />
 
-      {/* Recent feedback */}
+      {/* Feedback */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
-          <h2 className="text-sm font-semibold text-gray-700">Recent feedback</h2>
-          {fbSummary.total > 0 && (
-            <Link href={`/feedback?feature_id=${feature.id}`} className="text-xs font-medium text-blue-600 hover:text-blue-800">
-              View all feedback →
-            </Link>
-          )}
+          <h2 className="text-sm font-semibold text-gray-700">Feedback</h2>
+          {fbSummary.total > 0 && (() => {
+            const pct = fbSummary.positiveRate != null ? Math.round(fbSummary.positiveRate * 100) : null;
+            const color = pct != null ? (pct >= 80 ? "#1D9E75" : pct >= 60 ? "#EF9F27" : "#E24B4A") : undefined;
+            return (
+              <span className="text-xs text-gray-500">
+                <span className="font-medium text-gray-700">{fbSummary.total}</span> responses
+                {pct != null && (
+                  <> · <span className="font-medium" style={{ color }}>{pct}% positive</span></>
+                )}
+              </span>
+            );
+          })()}
         </div>
         {recentFeedback.length === 0 ? (
           <p className="px-4 py-6 text-sm text-gray-400">No feedback logged yet for this beta.</p>
@@ -626,34 +981,47 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                 const shortName = parts.length >= 2 ? `${parts[0][0]}. ${parts[parts.length - 1]}` : fb.feedbackProviderName;
                 const dateStr = new Date(fb.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
                 return (
-                  <tr key={fb.id} className="hover:bg-gray-50">
+                  <tr key={fb.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setFeedbackDetail(fb)}>
                     <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{fb.clientName}</td>
-                    <td className="px-4 py-2.5"><SentimentBadge sentiment={fb.sentiment} /></td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <SentimentBadge sentiment={fb.sentiment} />
+                        {fb.isGatingRequest && (
+                          <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">Blocking</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-2.5 text-sm text-gray-500 hidden sm:table-cell">{shortName}</td>
                     <td className="px-4 py-2.5 text-sm text-gray-500 hidden sm:table-cell">{dateStr}</td>
-                    <td className="px-4 py-2.5 text-sm text-gray-400 hidden md:table-cell max-w-xs truncate">{fb.notes ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-sm text-gray-400 hidden md:table-cell max-w-xs">
+                      <span className="truncate block">{fb.notes ?? "—"}</span>
+                      {fb.gatingDescription && (
+                        <p className="mt-0.5 text-xs italic text-gray-400 truncate">{fb.gatingDescription}</p>
+                      )}
+                      {fb.jiraTicketUrl && (
+                        <a href={fb.jiraTicketUrl} target="_blank" rel="noopener noreferrer"
+                          className="text-xs font-medium text-blue-600 hover:text-blue-800">
+                          View ticket →
+                        </a>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         )}
+        {fbSummary.total > 0 && (
+          <div className="px-4 py-2.5 text-right">
+            <Link href={`/feedback?feature_id=${feature.id}`} className="text-xs font-medium text-blue-600 hover:text-blue-800">
+              View all feedback →
+            </Link>
+          </div>
+        )}
       </div>
 
-      {feature.idealClientCriteria && (
-        <div className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800">
-          <strong>Ideal criteria:</strong> {feature.idealClientCriteria}
-        </div>
-      )}
-
-      <div className="rounded-lg bg-blue-50 px-4 py-3 text-sm text-blue-800">
-        {feature.betaGoal
-          ? <><strong>Beta goal:</strong> {feature.betaGoal}</>
-          : <span className="text-gray-400">No beta goal set — edit this feature to add one</span>}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-4">
-        <div className="lg:col-span-3 space-y-4">
+      <div className="flex flex-col lg:flex-row gap-6 items-start">
+        <div className="w-full space-y-4 order-2 lg:order-2 lg:flex-1 min-w-0">
           <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
           <div className="border-b border-gray-100 px-4 py-3">
             <h2 className="text-sm font-semibold text-gray-700">Enrollments</h2>
@@ -662,11 +1030,10 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
             <thead className="bg-gray-50">
               <tr>
                 {([
-                  { key: "client",   label: "Client",       cls: "" },
-                  { key: "status",   label: "Status",       cls: "hidden sm:table-cell" },
-                  { key: "segment",  label: "Segment",      cls: "hidden md:table-cell" },
-                  { key: "vertical", label: "Vertical",     cls: "hidden lg:table-cell" },
-                  { key: "approval", label: "CSM Approval", cls: "hidden lg:table-cell" },
+                  { key: "client",   label: "Client",   cls: "" },
+                  { key: "status",   label: "Status",   cls: "hidden sm:table-cell" },
+                  { key: "segment",  label: "Segment",  cls: "hidden md:table-cell" },
+                  { key: "vertical", label: "Vertical", cls: "hidden lg:table-cell" },
                 ] as const).map(({ key, label, cls }) => (
                   <th key={key}
                     onClick={() => toggleEnrollSort(key)}
@@ -685,8 +1052,6 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
             <tbody className="divide-y divide-gray-50">
               {[...activeEnrollments].sort((a, b) => {
                 if (!enrollSortCol) {
-                  const pendingDiff = (a.csmApprovalStatus === "pending" ? 0 : 1) - (b.csmApprovalStatus === "pending" ? 0 : 1);
-                  if (pendingDiff !== 0) return pendingDiff;
                   return ((a.client as any)?.name ?? "").localeCompare((b.client as any)?.name ?? "");
                 }
                 const dir = enrollSortDir === "asc" ? 1 : -1;
@@ -696,7 +1061,6 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                   case "status":   return dir * a.testerStatus.localeCompare(b.testerStatus);
                   case "segment":  return dir * (ac?.segment ?? "").localeCompare(bc?.segment ?? "");
                   case "vertical": return dir * (ac?.vertical ?? "").localeCompare(bc?.vertical ?? "");
-                  case "approval": return dir * a.csmApprovalStatus.localeCompare(b.csmApprovalStatus);
                   default: return 0;
                 }
               }).map((e) => {
@@ -727,21 +1091,13 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                         </button>
                       </td>
                       <td className="px-4 py-2.5 hidden sm:table-cell">
-                        <TesterStatusBadge status={e.testerStatus} />
+                        <StatusCell enrollment={e} canEdit={!!canWrite(currentUser)} onUpdated={load} />
                       </td>
                       <td className="px-4 py-2.5 hidden md:table-cell text-sm text-gray-600">
                         {c?.segment ?? <span className="text-gray-400">—</span>}
                       </td>
                       <td className="px-4 py-2.5 hidden lg:table-cell text-sm text-gray-600">
                         {c?.vertical ?? <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 hidden lg:table-cell">
-                        <ApprovalStatusBadge status={e.csmApprovalStatus} />
-                        {e.csmRejectionReason && (
-                          <p className="mt-0.5 text-xs text-gray-400 truncate max-w-[120px]" title={e.csmRejectionReason}>
-                            {e.csmRejectionReason}
-                          </p>
-                        )}
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         {e.csmApprovalStatus === "pending" ? (
@@ -760,7 +1116,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                     </tr>
                     {isExpanded && (
                       <tr>
-                        <td colSpan={6} className="bg-gray-50 px-4 py-3">
+                        <td colSpan={5} className="bg-gray-50 px-4 py-3">
                           <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 text-xs text-gray-500">
                             {c?.primaryContactName && (
                               <div>
@@ -807,7 +1163,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                               <p className="text-xs text-gray-400">Loading beta history…</p>
                             )}
                           </div>
-                          {c?.id && <EnrollmentFeedback clientId={c.id} featureId={feature.id} />}
+                          {c?.id && <EnrollmentFeedback clientId={c.id} clientName={c.name} featureId={feature.id} featureName={feature.name} testerStatus={e.testerStatus} />}
                         </td>
                       </tr>
                     )}
@@ -844,7 +1200,6 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 hidden sm:table-cell">Status</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 hidden md:table-cell">Segment</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 hidden lg:table-cell">Vertical</th>
-                      <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 hidden lg:table-cell">CSM Approval</th>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Reason</th>
                     </tr>
                   </thead>
@@ -874,9 +1229,6 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                           <td className="px-4 py-2.5 hidden lg:table-cell text-sm text-gray-600">
                             {c?.vertical ?? <span className="text-gray-400">—</span>}
                           </td>
-                          <td className="px-4 py-2.5 hidden lg:table-cell">
-                            <ApprovalStatusBadge status={e.csmApprovalStatus} />
-                          </td>
                           <td className="px-4 py-2.5 text-sm text-gray-500">
                             {e.csmRejectionReason ?? <span className="text-gray-300">—</span>}
                           </td>
@@ -891,7 +1243,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
         </div>
 
         {!isClosed && (
-          <div className="rounded-xl border border-gray-200 bg-white p-4 h-fit">
+          <div className="w-full lg:w-[30%] shrink-0 rounded-xl border border-gray-200 bg-white p-4 h-fit order-1 lg:order-1">
             <h2 className="text-sm font-semibold text-gray-700 mb-3">Add Beta Testers</h2>
             <NominatePanel
               featureId={feature.id}

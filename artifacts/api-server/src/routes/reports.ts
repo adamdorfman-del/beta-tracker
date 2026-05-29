@@ -14,10 +14,12 @@ router.get("/overview", async (req, res) => {
       featureCountsByStatus[f.status] = (featureCountsByStatus[f.status] ?? 0) + 1;
     }
 
-    const [{ value: totalConfirmed }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
-      .where(inArray(betaEnrollmentsTable.testerStatus, ["confirmed", "active"] as any));
-    const [{ value: totalOutreachSent }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
-      .where(eq(betaEnrollmentsTable.testerStatus, "outreach_sent" as any));
+    const [{ value: totalInProgress }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
+      .where(inArray(betaEnrollmentsTable.testerStatus, ["enrolled", "using"] as any));
+    const [{ value: totalAccepted }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
+      .where(eq(betaEnrollmentsTable.testerStatus, "accepted" as any));
+    const [{ value: totalNominated }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
+      .where(inArray(betaEnrollmentsTable.testerStatus, ["nominated","csm_pending"] as any));
 
     const today = new Date();
     const activeFeatures = features.filter(f => !f.closedAt && new Date(f.startDate) <= today);
@@ -28,7 +30,7 @@ router.get("/overview", async (req, res) => {
       ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
       : null;
 
-    return ok(res, { featureCountsByStatus, totalConfirmed, totalOutreachSent, avgBetaDurationDays });
+    return ok(res, { featureCountsByStatus, totalInProgress, totalAccepted, totalNominated, avgBetaDurationDays });
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);
@@ -126,8 +128,8 @@ router.get("/features", async (req, res) => {
 
     const rows = features.map(f => {
       const fe = byFeature.get(f.id) ?? [];
-      const confirmed = fe.filter(e => ["confirmed", "active", "completed"].includes(e.testerStatus));
-      const completed = fe.filter(e => e.testerStatus === "completed").length;
+      const confirmed = fe.filter(e => ["confirmed", "active", "completed", "enrolled", "using", "accepted"].includes(e.testerStatus));
+      const completed = fe.filter(e => ["completed", "accepted"].includes(e.testerStatus)).length;
       const dropped = fe.filter(e => e.testerStatus === "dropped").length;
       const outreachSent = fe.filter(e => e.outreachSentAt).length;
       const confirmedDates = confirmed.map(e => e.confirmedAt).filter(Boolean).map(d => new Date(d!)).sort((a, b) => a.getTime() - b.getTime());
@@ -175,7 +177,7 @@ router.get("/clients", async (req, res) => {
 
     const rows = clients.map(c => {
       const ce = byClient.get(c.id) ?? [];
-      const completed = ce.filter(e => e.testerStatus === "completed").length;
+      const completed = ce.filter(e => ["completed", "accepted"].includes(e.testerStatus)).length;
       const dropped = ce.filter(e => e.testerStatus === "dropped").length;
       return {
         id: c.id, name: c.name, tier: c.tier, accountHealth: c.accountHealth,

@@ -6,6 +6,7 @@ export function NewFeatureModal({ onClose, onCreated }: { onClose: () => void; o
   const [ownerPmId, setOwnerPmId] = useState("");
   const [ownerPmmId, setOwnerPmmId] = useState("");
   const [startDate, setStartDate] = useState("");
+  const [projectedEndDate, setProjectedEndDate] = useState("");
   const [outreachDeadline, setOutreachDeadline] = useState("");
   const [idealClientCriteria, setIdealClientCriteria] = useState(
     "Active customers with a relevant use case, green or yellow account health, and willingness to provide structured feedback within the beta period."
@@ -31,7 +32,7 @@ export function NewFeatureModal({ onClose, onCreated }: { onClose: () => void; o
     }
     setPending(true); setError("");
     try {
-      await api.features.create({ name, ownerPmId, ownerPmmId, startDate, outreachDeadline, idealClientCriteria, betaGoal, jiraEpicLink, targetTesterCount: parseInt(targetTesterCount, 10) });
+      await api.features.create({ name, ownerPmId, ownerPmmId, startDate, outreachDeadline, idealClientCriteria, betaGoal, jiraEpicLink, targetTesterCount: parseInt(targetTesterCount, 10), ...(projectedEndDate ? { projectedEndDate } : {}) });
       onCreated(); onClose();
     } catch (e: any) {
       setError(e.data?.error ?? "Failed to create feature.");
@@ -79,6 +80,11 @@ export function NewFeatureModal({ onClose, onCreated }: { onClose: () => void; o
               <input type="date" value={outreachDeadline} onChange={(e) => setOutreachDeadline(e.target.value)}
                 className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
             </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Projected end date</label>
+            <input type="date" value={projectedEndDate} onChange={(e) => setProjectedEndDate(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">Target tester count</label>
