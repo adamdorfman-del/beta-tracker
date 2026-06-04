@@ -185,9 +185,12 @@ function TrashIcon() {
   );
 }
 
-const EDITABLE_STATUSES = new Set(["csm_approved", "outreach_sent", "confirmed", "active", "enrolled", "using", "accepted", "completed"]);
-const ENROLLED_STAGE = new Set(["enrolled", "using", "accepted"]);
-const MOVABLE_TARGETS = ["enrolled", "using", "accepted"] as const;
+const EDITABLE_STATUSES = new Set(["nominated", "csm_approved", "outreach_sent", "confirmed", "active", "enrolled", "using", "accepted", "completed"]);
+
+// Options shown when current status is "nominated" — can't revert to nominated itself
+const NOMINATED_OPTIONS = ["csm_approved", "enrolled", "using", "accepted"] as const;
+// Full option list for all other statuses — includes nominated as revert, current is checked
+const ALL_OPTIONS = ["nominated", "csm_approved", "enrolled", "using", "accepted"] as const;
 
 function StatusCell({ enrollment, canEdit, onUpdated }: { enrollment: any; canEdit: boolean; onUpdated: () => void }) {
   const [open, setOpen] = useState(false);
@@ -210,7 +213,8 @@ function StatusCell({ enrollment, canEdit, onUpdated }: { enrollment: any; canEd
     return () => document.removeEventListener("mousedown", handleClose);
   }, [open]);
 
-  function openMenu() {
+  function openMenu(e: React.MouseEvent) {
+    e.stopPropagation();
     if (!triggerRef.current) return;
     const r = triggerRef.current.getBoundingClientRect();
     setDropPos({ top: r.bottom + 4, left: r.left });
@@ -231,9 +235,7 @@ function StatusCell({ enrollment, canEdit, onUpdated }: { enrollment: any; canEd
     }
   }
 
-  const options = ENROLLED_STAGE.has(status)
-    ? MOVABLE_TARGETS.filter(s => s !== status)
-    : [...MOVABLE_TARGETS];
+  const options = status === "nominated" ? NOMINATED_OPTIONS : ALL_OPTIONS;
 
   if (!canMove) return <TesterStatusBadge status={enrollment.testerStatus} />;
 
@@ -257,16 +259,22 @@ function StatusCell({ enrollment, canEdit, onUpdated }: { enrollment: any; canEd
       {open && dropPos && (
         <div
           ref={dropRef}
+          onClick={e => e.stopPropagation()}
           style={{ position: "fixed", top: dropPos.top, left: dropPos.left }}
-          className="z-50 rounded-lg border border-gray-200 bg-white shadow-lg py-1 min-w-[130px]"
+          className="z-50 rounded-lg border border-gray-200 bg-white shadow-lg py-1 min-w-[150px]"
         >
           {options.map(s => (
             <button
               key={s}
               onClick={() => changeStatus(s)}
-              className="flex items-center w-full px-3 py-1.5 hover:bg-gray-50 text-left"
+              className="flex items-center justify-between w-full px-3 py-1.5 hover:bg-gray-50 text-left"
             >
               <TesterStatusBadge status={s} />
+              {s === status && (
+                <svg className="h-3.5 w-3.5 text-blue-500 shrink-0 ml-2" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+              )}
             </button>
           ))}
         </div>
@@ -391,203 +399,6 @@ function EditFeedbackModal({ entry, onClose, onSaved, focusJira = false }: {
           </button>
         </div>
       </div>
-    </div>
-  );
-}
-
-function EnrollmentFeedback({ clientId, clientName, featureId, featureName, testerStatus }: { clientId: string; clientName?: string; featureId: string; featureName?: string; testerStatus?: string }) {
-  const currentUser = useCurrentUser();
-  const [items, setItems] = useState<any[]>([]);
-  const [loadingFb, setLoadingFb] = useState(true);
-  const [sentiment, setSentiment] = useState<Sentiment | null>(null);
-  const [notes, setNotes] = useState("");
-  const [isGatingRequest, setIsGatingRequest] = useState(false);
-  const [gatingDescription, setGatingDescription] = useState("");
-  const [jiraTicketUrl, setJiraTicketUrl] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [fbError, setFbError] = useState("");
-  const [editEntry, setEditEntry] = useState<any>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [showImport, setShowImport] = useState(false);
-
-  function loadFeedback() {
-    setLoadingFb(true);
-    api.feedback.list({ client_id: clientId, feature_id: featureId })
-      .then((d: any) => setItems(d.feedback ?? []))
-      .catch(console.error)
-      .finally(() => setLoadingFb(false));
-  }
-
-  useEffect(() => { loadFeedback(); }, []);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setFbError(""); setSubmitting(true);
-    if (!sentiment) { setFbError("Select a sentiment."); setSubmitting(false); return; }
-    if (isGatingRequest && !gatingDescription.trim()) {
-      setFbError("Gating description is required."); setSubmitting(false); return;
-    }
-    if (isGatingRequest && jiraTicketUrl && !jiraTicketUrl.startsWith("https://")) {
-      setFbError("JIRA ticket URL must start with https://"); setSubmitting(false); return;
-    }
-    try {
-      await api.feedback.create({
-        clientId, featureId, sentiment, notes,
-        isGatingRequest,
-        gatingDescription: isGatingRequest ? (gatingDescription.trim() || null) : null,
-        jiraTicketUrl: isGatingRequest ? (jiraTicketUrl || null) : null,
-      });
-      setNotes(""); setSentiment(null); setIsGatingRequest(false); setGatingDescription(""); setJiraTicketUrl("");
-      loadFeedback();
-    } catch (err: any) {
-      setFbError(err.data?.error ?? "Failed to save");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  const canLog = currentUser && ["csm", "pm", "admin"].includes(currentUser.role);
-
-  return (
-    <div className="mt-3 pt-3 border-t border-gray-200">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="flex items-center gap-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Feedback</p>
-          {testerStatus && (
-            <TesterStatusBadge status={testerStatus as any} />
-          )}
-        </div>
-        {canLog && (
-          <button
-            onClick={() => setShowImport(true)}
-            className="text-[10px] font-medium text-blue-600 hover:text-blue-800 shrink-0"
-          >
-            Import from transcript
-          </button>
-        )}
-      </div>
-      {loadingFb ? (
-        <p className="text-xs text-gray-400">Loading…</p>
-      ) : items.length === 0 ? (
-        <p className="text-xs text-gray-400 mb-2">No feedback logged yet.</p>
-      ) : (
-        <div className="space-y-1 mb-2">
-          {items.map((fb: any) => {
-            const isDeleting = deleteId === fb.id;
-            return (
-              <div key={fb.id}>
-                {isDeleting ? (
-                  <div className="flex items-center gap-2 text-xs py-0.5">
-                    <span className="text-gray-500">Delete this? Cannot be undone.</span>
-                    <button onClick={() => setDeleteId(null)} disabled={deleting}
-                      className="rounded border border-gray-200 px-2 py-0.5 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
-                      Cancel
-                    </button>
-                    <button disabled={deleting} onClick={async () => {
-                      setDeleting(true);
-                      try {
-                        await api.feedback.remove(fb.id);
-                        setItems(prev => prev.filter((x: any) => x.id !== fb.id));
-                        setDeleteId(null);
-                      } catch { /* ignore */ } finally { setDeleting(false); }
-                    }} className="rounded bg-red-600 px-2 py-0.5 font-medium text-white hover:bg-red-700 disabled:opacity-50">
-                      {deleting ? "…" : "Delete"}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-xs group">
-                    <SentimentBadge sentiment={fb.sentiment} />
-                    {fb.isGatingRequest && (
-                      <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 shrink-0">Blocking</span>
-                    )}
-                    <span className="flex-1 truncate text-gray-700">
-                      {fb.notes || <span className="italic text-gray-400">No notes</span>}
-                    </span>
-                    {fb.jiraTicketUrl && (
-                      <a href={fb.jiraTicketUrl} target="_blank" rel="noopener noreferrer"
-                        className="shrink-0 text-blue-600 hover:text-blue-800 font-medium">
-                        JIRA →
-                      </a>
-                    )}
-                    <span className="flex-shrink-0 text-gray-400">
-                      {fb.feedbackProviderName} · {new Date(fb.createdAt).toLocaleDateString()}
-                    </span>
-                    {canLog && (
-                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => setEditEntry(fb)} title="Edit"
-                          className="rounded p-0.5 text-gray-300 hover:text-blue-600 hover:bg-blue-50">
-                          <PencilIcon />
-                        </button>
-                        <button onClick={() => setDeleteId(fb.id)} title="Delete"
-                          className="rounded p-0.5 text-gray-300 hover:text-red-600 hover:bg-red-50">
-                          <TrashIcon />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      {canLog && (
-        <form onSubmit={submit} className="space-y-1.5">
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex overflow-hidden rounded border border-gray-200">
-              {(["positive", "neutral", "negative"] as const).map((s) => (
-                <button key={s} type="button" onClick={() => setSentiment(s)}
-                  className={`px-2 py-1 text-[10px] font-medium transition-colors ${
-                    sentiment === s ? (SENTIMENT_STYLES[s] ?? "bg-gray-100 text-gray-700") : "text-gray-400 hover:bg-gray-50"
-                  }`}>
-                  {s.charAt(0).toUpperCase() + s.slice(1)}
-                </button>
-              ))}
-            </div>
-            <input value={notes} onChange={(e) => setNotes(e.target.value)}
-              placeholder="Notes (optional)"
-              className="min-w-0 flex-1 rounded border border-gray-200 px-2 py-1 text-xs outline-none focus:border-blue-300" />
-            <button type="submit" disabled={submitting}
-              className="rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50">
-              {submitting ? "…" : "Log"}
-            </button>
-          </div>
-          <label className="flex items-center gap-1.5 cursor-pointer">
-            <input type="checkbox" checked={isGatingRequest} onChange={(e) => setIsGatingRequest(e.target.checked)}
-              className="rounded border-gray-300 text-red-600 focus:ring-red-500" />
-            <span className="text-[10px] text-gray-600">Blocking feature request</span>
-          </label>
-          {isGatingRequest && (
-            <>
-              <textarea value={gatingDescription} onChange={(e) => setGatingDescription(e.target.value)} rows={2}
-                placeholder="Describe the feature request blocking adoption (required)"
-                className="w-full rounded border border-gray-200 px-2 py-1 text-xs outline-none focus:border-blue-300 resize-none" />
-              <input type="url" value={jiraTicketUrl} onChange={(e) => setJiraTicketUrl(e.target.value)}
-                placeholder="JIRA ticket URL (https://...)"
-                className="w-full rounded border border-gray-200 px-2 py-1 text-xs outline-none focus:border-blue-300" />
-            </>
-          )}
-          {fbError && <p className="w-full text-xs text-red-600">{fbError}</p>}
-        </form>
-      )}
-      {editEntry && (
-        <EditFeedbackModal
-          entry={editEntry}
-          onClose={() => setEditEntry(null)}
-          onSaved={loadFeedback}
-        />
-      )}
-      {showImport && (
-        <TranscriptImportModal
-          defaultClientId={clientId}
-          defaultClientName={clientName}
-          defaultFeatureId={featureId}
-          defaultFeatureName={featureName}
-          onClose={() => setShowImport(false)}
-          onSaved={loadFeedback}
-        />
-      )}
     </div>
   );
 }
@@ -752,6 +563,422 @@ const NominatePanel = React.memo(function NominatePanel({ featureId, enrolledCli
   );
 });
 
+function EnrollmentDrawer({
+  enrollment,
+  feature,
+  canWrite,
+  onClose,
+  onUpdated,
+  onAction,
+  onRemoved,
+}: {
+  enrollment: any;
+  feature: any;
+  canWrite: boolean;
+  onClose: () => void;
+  onUpdated: () => void;
+  onAction: () => void;
+  onRemoved: (id: string) => void;
+}) {
+  const [client, setClient] = useState<any>(null);
+  const [feedback, setFeedback] = useState<any[]>([]);
+  const [fbLoading, setFbLoading] = useState(true);
+
+  const [sentiment, setSentiment] = useState<Sentiment | null>(null);
+  const [notes, setNotes] = useState("");
+  const [isGatingRequest, setIsGatingRequest] = useState(false);
+  const [gatingDescription, setGatingDescription] = useState("");
+  const [jiraTicketUrl, setJiraTicketUrl] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [fbError, setFbError] = useState("");
+
+  const [editEntry, setEditEntry] = useState<any>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+
+  const c = enrollment.client as any;
+  const clientId = c?.id ?? enrollment.clientId;
+
+  useEffect(() => {
+    if (!clientId) return;
+    api.clients.get(clientId).then(setClient).catch(() => {});
+  }, [clientId]);
+
+  function loadFeedback() {
+    setFbLoading(true);
+    api.feedback.list({ client_id: clientId, feature_id: feature.id })
+      .then((d: any) => setFeedback(d.feedback ?? []))
+      .catch(console.error)
+      .finally(() => setFbLoading(false));
+  }
+
+  useEffect(() => {
+    if (!clientId) return;
+    loadFeedback();
+  }, [clientId, feature.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function submitFeedback(e: React.FormEvent) {
+    e.preventDefault();
+    if (!sentiment) { setFbError("Select a sentiment."); return; }
+    if (isGatingRequest && !gatingDescription.trim()) {
+      setFbError("Gating description is required."); return;
+    }
+    if (jiraTicketUrl && !jiraTicketUrl.startsWith("https://")) {
+      setFbError("JIRA URL must start with https://"); return;
+    }
+    setFbError(""); setSubmitting(true);
+    try {
+      await api.feedback.create({
+        clientId, featureId: feature.id, sentiment, notes,
+        isGatingRequest,
+        gatingDescription: isGatingRequest ? (gatingDescription.trim() || null) : null,
+        jiraTicketUrl: isGatingRequest ? (jiraTicketUrl || null) : null,
+      });
+      setNotes(""); setSentiment(null); setIsGatingRequest(false); setGatingDescription(""); setJiraTicketUrl("");
+      loadFeedback();
+    } catch (err: any) {
+      setFbError(err.data?.error ?? "Failed to save");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const preOutreach = ["nominated", "csm_pending", "csm_approved"].includes(enrollment.testerStatus);
+  const needsApproval = enrollment.csmApprovalStatus === "pending";
+
+  const positiveCount = feedback.filter((f) => f.sentiment === "positive").length;
+  const pct = feedback.length > 0 ? Math.round((positiveCount / feedback.length) * 100) : null;
+  const pctColor = pct != null ? (pct >= 80 ? "#1D9E75" : pct >= 60 ? "#EF9F27" : "#E24B4A") : undefined;
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* Header */}
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <HealthDot health={c?.accountHealth ?? "green"} />
+          <div className="min-w-0">
+            <p className="truncate text-gray-900" style={{ fontSize: 16, fontWeight: 500 }}>
+              {c?.name ?? "—"}
+            </p>
+            <p className="mt-0.5 text-xs text-gray-400">
+              {c?.csmOwner?.name ? `CSM: ${c.csmOwner.name}` : ""}
+              {c?.aeOwner?.name ? ` · AE: ${c.aeOwner.name}` : ""}
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="shrink-0 rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        >
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Scrollable body */}
+      <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+
+        {/* Details grid */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">Status</p>
+            <StatusCell enrollment={enrollment} canEdit={canWrite} onUpdated={onUpdated} />
+          </div>
+          <div>
+            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">Segment</p>
+            <p className="text-sm text-gray-700">{c?.segment ?? <span className="text-gray-400">—</span>}</p>
+          </div>
+          <div>
+            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">Vertical</p>
+            <p className="text-sm text-gray-700">{c?.vertical ?? <span className="text-gray-400">—</span>}</p>
+          </div>
+          <div>
+            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">Renewal</p>
+            <p className="text-sm text-gray-700">
+              {client?.contractRenewalDate
+                ? new Date(client.contractRenewalDate + 'T00:00:00').toLocaleDateString()
+                : <span className="text-gray-400">—</span>}
+            </p>
+          </div>
+          {client?.primaryContactName && (
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">Primary Contact</p>
+              <p className="text-sm text-gray-700">{client.primaryContactName}</p>
+            </div>
+          )}
+          {client?.primaryContactEmail && (
+            <div>
+              <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gray-400">Email</p>
+              <a
+                href={`mailto:${client.primaryContactEmail}`}
+                className="block truncate text-sm text-blue-600 hover:text-blue-800"
+              >
+                {client.primaryContactEmail}
+              </a>
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        {canWrite && (
+          <div>
+            {needsApproval ? (
+              <ApproveRejectButtons enrollmentId={enrollment.id} onDone={onAction} />
+            ) : enrollment.testerStatus === "csm_approved" ? (
+              <div className="flex items-center gap-2">
+                <RevokeApprovalButton enrollmentId={enrollment.id} onDone={onAction} />
+                <RemoveButton enrollmentId={enrollment.id} onDone={() => onRemoved(enrollment.id)} />
+              </div>
+            ) : preOutreach ? (
+              <RemoveButton enrollmentId={enrollment.id} onDone={() => onRemoved(enrollment.id)} />
+            ) : null}
+          </div>
+        )}
+
+        {/* Log feedback */}
+        <div className="border-t border-gray-100 pt-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Log feedback</p>
+          <form onSubmit={submitFeedback} className="space-y-3">
+            <div className="flex overflow-hidden rounded-lg border border-gray-200">
+              {(["positive", "neutral", "negative"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setSentiment(s)}
+                  className={`flex-1 py-1.5 text-sm font-medium transition-colors ${
+                    sentiment === s
+                      ? s === "positive"
+                        ? "bg-green-100 text-green-700"
+                        : s === "negative"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-gray-100 text-gray-600"
+                      : "text-gray-400 hover:bg-gray-50"
+                  }`}
+                >
+                  {s.charAt(0).toUpperCase() + s.slice(1)}
+                </button>
+              ))}
+            </div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes (optional)"
+              rows={2}
+              className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+            />
+            <label className="flex cursor-pointer items-center gap-2">
+              <input
+                type="checkbox"
+                checked={isGatingRequest}
+                onChange={(e) => setIsGatingRequest(e.target.checked)}
+                className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+              />
+              <span className="text-sm text-gray-700">Blocking feature request</span>
+            </label>
+            {isGatingRequest && (
+              <>
+                <textarea
+                  value={gatingDescription}
+                  onChange={(e) => setGatingDescription(e.target.value)}
+                  placeholder="Describe what's blocking adoption (required)"
+                  rows={2}
+                  className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                />
+                <input
+                  type="url"
+                  value={jiraTicketUrl}
+                  onChange={(e) => setJiraTicketUrl(e.target.value)}
+                  placeholder="https://birdeye.atlassian.net/..."
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-400"
+                />
+              </>
+            )}
+            {fbError && <p className="text-xs text-red-600">{fbError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {submitting ? "Logging…" : "Log"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowImport(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                <svg className="h-3.5 w-3.5 text-purple-500" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+                Import from transcript
+              </button>
+            </div>
+          </form>
+        </div>
+
+        {/* Feedback history */}
+        <div className="border-t border-gray-100 pt-4">
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Feedback ({feedback.length})
+            </p>
+            {pct != null && (
+              <span className="text-xs font-medium" style={{ color: pctColor }}>
+                {pct}% positive
+              </span>
+            )}
+          </div>
+          {fbLoading ? (
+            <p className="text-xs text-gray-400">Loading…</p>
+          ) : feedback.length === 0 ? (
+            <p className="text-xs text-gray-400">No feedback logged yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {feedback.map((fb: any) => {
+                const isDeleting = deleteId === fb.id;
+                if (isDeleting) {
+                  return (
+                    <div key={fb.id} className="flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs">
+                      <span className="flex-1 text-gray-600">Delete this? Cannot be undone.</span>
+                      <button
+                        onClick={() => setDeleteId(null)}
+                        disabled={deleting}
+                        className="rounded border border-gray-200 px-2 py-0.5 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        disabled={deleting}
+                        onClick={async () => {
+                          setDeleting(true);
+                          try {
+                            await api.feedback.remove(fb.id);
+                            setFeedback((prev) => prev.filter((x: any) => x.id !== fb.id));
+                            setDeleteId(null);
+                          } catch { /* ignore */ } finally { setDeleting(false); }
+                        }}
+                        className="rounded bg-red-600 px-2 py-0.5 font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                      >
+                        {deleting ? "…" : "Delete"}
+                      </button>
+                    </div>
+                  );
+                }
+
+                const nameParts = (fb.feedbackProviderName ?? "").trim().split(/\s+/);
+                const initials = nameParts.length >= 2
+                  ? `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase()
+                  : (nameParts[0]?.[0] ?? "?").toUpperCase();
+                const dateStr = new Date(fb.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+
+                return (
+                  <div key={fb.id} className="group space-y-1.5 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <SentimentBadge sentiment={fb.sentiment} />
+                      {fb.isGatingRequest && (
+                        <span className="inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                          Blocking
+                        </span>
+                      )}
+                      <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        {canWrite && (
+                          <>
+                            <button
+                              onClick={() => setEditEntry(fb)}
+                              title="Edit"
+                              className="rounded p-0.5 text-gray-400 hover:bg-blue-50 hover:text-blue-600"
+                            >
+                              <PencilIcon />
+                            </button>
+                            <button
+                              onClick={() => setDeleteId(fb.id)}
+                              title="Delete"
+                              className="rounded p-0.5 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                            >
+                              <TrashIcon />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    {fb.notes
+                      ? <p className="text-sm text-gray-800">{fb.notes}</p>
+                      : <p className="text-sm italic text-gray-400">No notes</p>}
+                    {fb.isGatingRequest && fb.gatingDescription && (
+                      <p className="text-xs italic text-gray-500">{fb.gatingDescription}</p>
+                    )}
+                    {fb.isGatingRequest && fb.jiraTicketUrl && (
+                      <a
+                        href={fb.jiraTicketUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-gray-400 hover:text-blue-600"
+                      >
+                        View ticket →
+                      </a>
+                    )}
+                    <p className="text-[10px] text-gray-400">{initials} · {dateStr}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Beta history */}
+        <div className="border-t border-gray-100 pt-4">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+            Beta history ({(client?.enrollments ?? []).length})
+          </p>
+          {!client ? (
+            <p className="text-xs text-gray-400">Loading…</p>
+          ) : (client.enrollments ?? []).length === 0 ? (
+            <p className="text-xs text-gray-400">No beta history.</p>
+          ) : (
+            <div className="space-y-1.5">
+              {(client.enrollments ?? []).map((be: any) => (
+                <div key={be.id} className="flex items-center justify-between gap-2 text-xs">
+                  <Link
+                    href={`/features/${be.feature?.slug ?? be.featureId}`}
+                    className="truncate font-medium text-blue-600 hover:underline"
+                  >
+                    {be.feature?.name ?? be.featureId}
+                  </Link>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <TesterStatusBadge status={be.testerStatus} />
+                    <span className="text-gray-400">{new Date(be.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+      </div>
+
+      {editEntry && (
+        <EditFeedbackModal
+          entry={editEntry}
+          onClose={() => setEditEntry(null)}
+          onSaved={loadFeedback}
+        />
+      )}
+      {showImport && (
+        <TranscriptImportModal
+          defaultClientId={clientId}
+          defaultClientName={c?.name}
+          defaultFeatureId={feature.id}
+          defaultFeatureName={feature.name}
+          onClose={() => setShowImport(false)}
+          onSaved={loadFeedback}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function FeatureDetailPage({ params: { id } }: { params: { id: string } }) {
   const [feature, setFeature] = useState<BetaFeature & { enrollments: BetaEnrollment[] } | null>(null);
   const [enrollments, setEnrollments] = useState<any[]>([]);
@@ -759,8 +986,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   const currentUser = useCurrentUser();
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
-  const [expandId, setExpandId] = useState<string | null>(null);
-  const [expandedClient, setExpandedClient] = useState<any>(null);
+  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState<string | null>(null);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [enrollSortCol, setEnrollSortCol] = useState("");
   const [enrollSortDir, setEnrollSortDir] = useState<"asc" | "desc">("asc");
@@ -805,13 +1031,12 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   useEffect(() => { load(); }, [id]);
 
   useEffect(() => {
-    if (!expandId) { setExpandedClient(null); return; }
-    const enrollment = enrollments.find(e => e.id === expandId);
-    const clientId = (enrollment?.client as any)?.id ?? enrollment?.clientId;
-    if (!clientId) return;
-    setExpandedClient(null);
-    api.clients.get(clientId).then(setExpandedClient).catch(() => {});
-  }, [expandId]);
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSelectedEnrollmentId(null);
+    }
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, []);
 
   if (loading && !feature) return <div className="py-16 text-center text-sm text-gray-400">Loading…</div>;
   if (!feature) return <div className="py-16 text-center text-sm text-gray-400">Feature not found.</div>;
@@ -855,7 +1080,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 overflow-x-hidden max-w-full">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <Link href="/features" className="text-sm text-gray-400 hover:text-gray-600">← Beta Features</Link>
@@ -881,9 +1106,9 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
             )}
             <span>PM: {(feature as any).ownerPm?.name}</span>
             <span>PMM: {(feature as any).ownerPmm?.name}</span>
-            <span>Start: {new Date(feature.startDate).toLocaleDateString()}</span>
+            <span>Start: {new Date(feature.startDate + 'T00:00:00').toLocaleDateString()}</span>
             {(feature as any).projectedEndDate && (
-              <span>End: {new Date((feature as any).projectedEndDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
+              <span>End: {new Date((feature as any).projectedEndDate + 'T00:00:00').toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</span>
             )}
             {feature.closedAt && <span>Closed: {new Date(feature.closedAt).toLocaleDateString()}</span>}
             {(feature as any).jiraEpicLink && (
@@ -893,37 +1118,35 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
               </a>
             )}
           </div>
-          {((feature as any).idealClientCriteria || feature.betaGoal || canWrite(currentUser)) && (
-            <div className="mt-1 flex items-baseline gap-3 text-sm text-gray-500">
-              {(feature as any).idealClientCriteria && (
-                <>
-                  <span className="shrink-0 text-gray-400">Ideal customer:</span>
-                  <button
-                    onClick={() => setIdealExpanded(v => !v)}
-                    className={`min-w-0 text-left hover:text-gray-700 cursor-pointer${idealExpanded ? "" : " truncate"}`}
-                    title={idealExpanded ? undefined : (feature as any).idealClientCriteria}
-                  >
-                    {(feature as any).idealClientCriteria}
-                  </button>
-                </>
-              )}
-              {(feature.betaGoal || canWrite(currentUser)) && (
-                <>
-                  <span className="shrink-0 text-gray-400">Goal:</span>
-                  {feature.betaGoal ? (
-                    <button
-                      onClick={() => setGoalExpanded(v => !v)}
-                      className={`min-w-0 text-left hover:text-gray-700 cursor-pointer${goalExpanded ? "" : " truncate"}`}
-                      title={goalExpanded ? undefined : feature.betaGoal}
-                    >
-                      {feature.betaGoal}
-                    </button>
-                  ) : (
-                    <button onClick={() => setEditOpen(true)} className="shrink-0 text-amber-600 hover:text-amber-700">
-                      Add beta goal
-                    </button>
-                  )}
-                </>
+          {(feature as any).idealClientCriteria && (
+            <div className="mt-1 flex gap-2 text-sm text-gray-500" style={{ overflowWrap: "break-word", wordBreak: "break-word" }}>
+              <span className="shrink-0 text-gray-400">Ideal customer:</span>
+              <button
+                onClick={() => setIdealExpanded(v => !v)}
+                className="min-w-0 text-left hover:text-gray-700 cursor-pointer"
+                style={{ whiteSpace: idealExpanded ? "normal" : "nowrap", overflow: idealExpanded ? "visible" : "hidden", textOverflow: idealExpanded ? "clip" : "ellipsis" }}
+                title={idealExpanded ? undefined : (feature as any).idealClientCriteria}
+              >
+                {(feature as any).idealClientCriteria}
+              </button>
+            </div>
+          )}
+          {(feature.betaGoal || canWrite(currentUser)) && (
+            <div className="mt-0.5 flex gap-2 text-sm text-gray-500" style={{ overflowWrap: "break-word", wordBreak: "break-word" }}>
+              <span className="shrink-0 text-gray-400">Goal:</span>
+              {feature.betaGoal ? (
+                <button
+                  onClick={() => setGoalExpanded(v => !v)}
+                  className="min-w-0 text-left hover:text-gray-700 cursor-pointer"
+                  style={{ whiteSpace: goalExpanded ? "normal" : "nowrap", overflow: goalExpanded ? "visible" : "hidden", textOverflow: goalExpanded ? "clip" : "ellipsis" }}
+                  title={goalExpanded ? undefined : feature.betaGoal}
+                >
+                  {feature.betaGoal}
+                </button>
+              ) : (
+                <button onClick={() => setEditOpen(true)} className="shrink-0 text-amber-600 hover:text-amber-700">
+                  Add beta goal
+                </button>
               )}
             </div>
           )}
@@ -976,7 +1199,14 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
         {recentFeedback.length === 0 ? (
           <p className="px-4 py-6 text-sm text-gray-400">No feedback logged yet for this beta.</p>
         ) : (
-          <table className="min-w-full divide-y divide-gray-100">
+          <table className="w-full divide-y divide-gray-100" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "20%" }} />
+              <col style={{ width: "15%" }} />
+              <col className="hidden sm:table-column" style={{ width: "18%" }} />
+              <col className="hidden sm:table-column" style={{ width: "12%" }} />
+              <col className="hidden md:table-column" />
+            </colgroup>
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Client</th>
@@ -993,7 +1223,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                 const dateStr = new Date(fb.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" });
                 return (
                   <tr key={fb.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setFeedbackDetail(fb)}>
-                    <td className="px-4 py-2.5 text-sm font-medium text-gray-900">{fb.clientName}</td>
+                    <td className="px-4 py-2.5 text-sm font-medium text-gray-900 truncate">{fb.clientName}</td>
                     <td className="px-4 py-2.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <SentimentBadge sentiment={fb.sentiment} />
@@ -1004,7 +1234,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                     </td>
                     <td className="px-4 py-2.5 text-sm text-gray-500 hidden sm:table-cell">{shortName}</td>
                     <td className="px-4 py-2.5 text-sm text-gray-500 hidden sm:table-cell">{dateStr}</td>
-                    <td className="px-4 py-2.5 text-sm text-gray-400 hidden md:table-cell max-w-xs">
+                    <td className="px-4 py-2.5 text-sm text-gray-400 hidden md:table-cell" style={{ maxWidth: 0 }}>
                       <span className="truncate block">{fb.notes ?? "—"}</span>
                       {fb.gatingDescription && (
                         <p className="mt-0.5 text-xs italic text-gray-400 truncate">{fb.gatingDescription}</p>
@@ -1037,7 +1267,13 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
           <div className="border-b border-gray-100 px-4 py-3">
             <h2 className="text-sm font-semibold text-gray-700">Enrollments</h2>
           </div>
-          <table className="min-w-full divide-y divide-gray-100">
+          <table className="w-full divide-y divide-gray-100" style={{ tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "40%" }} />
+              <col className="hidden sm:table-column" style={{ width: "20%" }} />
+              <col className="hidden md:table-column" style={{ width: "20%" }} />
+              <col className="hidden lg:table-column" style={{ width: "20%" }} />
+            </colgroup>
             <thead className="bg-gray-50">
               <tr>
                 {([
@@ -1057,7 +1293,6 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                       : <svg className="ml-1 h-3 w-3 text-gray-300 inline" viewBox="0 0 16 16" fill="currentColor"><path d="M8 3l3 4H5l3-4zm0 10L5 9h6l-3 4z"/></svg>}
                   </th>
                 ))}
-                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -1075,110 +1310,42 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                   default: return 0;
                 }
               }).map((e) => {
-                const preOutreach = ["nominated", "csm_pending", "csm_approved"].includes(e.testerStatus);
-                const isExpanded = expandId === e.id;
+                const isSelected = selectedEnrollmentId === e.id;
                 const c = e.client as any;
                 return (
-                  <React.Fragment key={e.id}>
-                    <tr className={`hover:bg-gray-50 ${e.isOverflow ? "bg-indigo-50/30" : ""}`}>
-                      <td className="px-4 py-2.5">
-                        <button
-                          onClick={() => setExpandId(isExpanded ? null : e.id)}
-                          className="flex items-center gap-2 text-left group w-full"
-                        >
-                          <HealthDot health={c?.accountHealth ?? "green"} />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900 group-hover:text-blue-600">
-                              {c?.name}
-                              {e.isOverflow && (
-                                <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">overflow</span>
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-400">
-                              CSM: {c?.csmOwner?.name ?? "—"}
-                              {c?.aeOwner && <span className="ml-2">· AE: {c.aeOwner.name}</span>}
-                            </p>
-                          </div>
-                        </button>
-                      </td>
-                      <td className="px-4 py-2.5 hidden sm:table-cell">
-                        <StatusCell enrollment={e} canEdit={!!canWrite(currentUser)} onUpdated={load} />
-                      </td>
-                      <td className="px-4 py-2.5 hidden md:table-cell text-sm text-gray-600">
-                        {c?.segment ?? <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 hidden lg:table-cell text-sm text-gray-600">
-                        {c?.vertical ?? <span className="text-gray-400">—</span>}
-                      </td>
-                      <td className="px-4 py-2.5 text-right">
-                        {e.csmApprovalStatus === "pending" ? (
-                          <ApproveRejectButtons enrollmentId={e.id} onDone={load} />
-                        ) : e.testerStatus === "csm_approved" ? (
-                          <div className="flex items-center justify-end gap-2">
-                            <RevokeApprovalButton enrollmentId={e.id} onDone={load} />
-                            <RemoveButton enrollmentId={e.id} onDone={() => onRemoved(e.id)} />
-                          </div>
-                        ) : preOutreach ? (
-                          <div className="flex justify-end">
-                            <RemoveButton enrollmentId={e.id} onDone={() => onRemoved(e.id)} />
-                          </div>
-                        ) : null}
-                      </td>
-                    </tr>
-                    {isExpanded && (
-                      <tr>
-                        <td colSpan={5} className="bg-gray-50 px-4 py-3">
-                          <div className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 text-xs text-gray-500">
-                            {c?.primaryContactName && (
-                              <div>
-                                <p className="font-medium text-gray-600">Primary Contact</p>
-                                <p>{c.primaryContactName}</p>
-                                {c.primaryContactEmail && <p className="text-gray-400">{c.primaryContactEmail}</p>}
-                              </div>
+                  <tr
+                    key={e.id}
+                    onClick={() => setSelectedEnrollmentId(isSelected ? null : e.id)}
+                    className={`cursor-pointer hover:bg-gray-50 ${e.isOverflow ? "bg-indigo-50/30" : ""}`}
+                    style={isSelected ? { borderLeft: "2px solid #3C3489", backgroundColor: "#FAFAFE" } : {}}
+                  >
+                    <td className="px-4 py-2.5 min-w-0 overflow-hidden">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <HealthDot health={c?.accountHealth ?? "green"} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate" style={isSelected ? { color: "#3C3489" } : { color: undefined }}>
+                            {c?.name}
+                            {e.isOverflow && (
+                              <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">overflow</span>
                             )}
-                            {c?.segment    && <div><p className="font-medium text-gray-600">Segment</p><p>{c.segment}</p></div>}
-                            {c?.tier != null && <div><p className="font-medium text-gray-600">Tier</p><p>T{c.tier}</p></div>}
-                            {c?.vertical   && <div><p className="font-medium text-gray-600">Vertical</p><p>{c.vertical}</p></div>}
-                            {c?.contractRenewalDate && <div><p className="font-medium text-gray-600">Renewal</p><p>{new Date(c.contractRenewalDate).toLocaleDateString()}</p></div>}
-                            {c?.productSubscriptions && <div><p className="font-medium text-gray-600">Products</p><p>{c.productSubscriptions}</p></div>}
-                            {c?.lastOutreachDate && <div><p className="font-medium text-gray-600">Last Outreach</p><p>{new Date(c.lastOutreachDate).toLocaleDateString()}</p></div>}
-                            {c?.notes && <div className="col-span-2"><p className="font-medium text-gray-600">Notes</p><p>{c.notes}</p></div>}
-                          </div>
-                          <div className="mt-3 pt-3 border-t border-gray-200">
-                            {expandedClient?.id === c?.id ? (
-                              <>
-                                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                                  Beta History ({(expandedClient.enrollments ?? []).length})
-                                </p>
-                                {(expandedClient.enrollments ?? []).length === 0 ? (
-                                  <p className="text-xs text-gray-400">No beta enrollments on record.</p>
-                                ) : (
-                                  <div className="space-y-1.5">
-                                    {(expandedClient.enrollments ?? []).map((be: any) => (
-                                      <div key={be.id} className="flex items-center justify-between gap-2 text-xs">
-                                        <Link href={`/features/${be.feature?.slug ?? be.featureId}`}
-                                          className="font-medium text-blue-600 hover:underline truncate">
-                                          {be.feature?.name ?? be.featureId}
-                                        </Link>
-                                        <div className="flex items-center gap-1.5 flex-shrink-0">
-                                          <TesterStatusBadge status={be.testerStatus} />
-                                          {be.feature?.status && <BetaStatusBadge status={be.feature.status} />}
-                                          <span className="text-gray-400">{new Date(be.createdAt).toLocaleDateString()}</span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </>
-                            ) : (
-                              <p className="text-xs text-gray-400">Loading beta history…</p>
-                            )}
-                          </div>
-                          {c?.id && <EnrollmentFeedback clientId={c.id} clientName={c.name} featureId={feature.id} featureName={feature.name} testerStatus={e.testerStatus} />}
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
+                          </p>
+                          <p className="text-xs text-gray-400 truncate">
+                            CSM: {c?.csmOwner?.name ?? "—"}
+                            {c?.aeOwner && <span className="ml-2">· AE: {c.aeOwner.name}</span>}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5 hidden sm:table-cell">
+                      <StatusCell enrollment={e} canEdit={!!canWrite(currentUser)} onUpdated={load} />
+                    </td>
+                    <td className="px-4 py-2.5 hidden md:table-cell text-sm text-gray-600">
+                      {c?.segment ?? <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5 hidden lg:table-cell text-sm text-gray-600">
+                      {c?.vertical ?? <span className="text-gray-400">—</span>}
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
@@ -1204,7 +1371,14 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                 </svg>
               </button>
               {removedOpen && (
-                <table className="min-w-full divide-y divide-gray-100">
+                <table className="w-full divide-y divide-gray-100" style={{ tableLayout: "fixed" }}>
+                  <colgroup>
+                    <col style={{ width: "35%" }} />
+                    <col className="hidden sm:table-column" style={{ width: "15%" }} />
+                    <col className="hidden md:table-column" style={{ width: "15%" }} />
+                    <col className="hidden lg:table-column" style={{ width: "15%" }} />
+                    <col style={{ width: "20%" }} />
+                  </colgroup>
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-2 text-left text-xs font-medium text-gray-500">Client</th>
@@ -1219,12 +1393,12 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                       const c = e.client as any;
                       return (
                         <tr key={e.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-2.5">
-                            <div className="flex items-center gap-2">
+                          <td className="px-4 py-2.5 min-w-0 overflow-hidden">
+                            <div className="flex items-center gap-2 min-w-0">
                               <HealthDot health={c?.accountHealth ?? "green"} />
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">{c?.name}</p>
-                                <p className="text-xs text-gray-400">
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium text-gray-900 truncate">{c?.name}</p>
+                                <p className="text-xs text-gray-400 truncate">
                                   CSM: {c?.csmOwner?.name ?? "—"}
                                   {c?.aeOwner && <span className="ml-2">· AE: {c.aeOwner.name}</span>}
                                 </p>
@@ -1264,6 +1438,42 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
           </div>
         )}
       </div>
+
+      {/* Enrollment drawer backdrop */}
+      <div
+        onClick={() => setSelectedEnrollmentId(null)}
+        className="fixed inset-0 z-40 transition-opacity duration-200"
+        style={{
+          backgroundColor: "rgba(0,0,0,0.15)",
+          opacity: selectedEnrollmentId ? 1 : 0,
+          pointerEvents: selectedEnrollmentId ? "auto" : "none",
+        }}
+      />
+
+      {/* Enrollment drawer */}
+      {(() => {
+        const selectedEnrollment = activeEnrollments.find(e => e.id === selectedEnrollmentId) ?? null;
+        const drawerOpen = !!selectedEnrollment;
+        return (
+          <div
+            className="fixed inset-y-0 right-0 z-50 flex w-[400px] flex-col overflow-hidden bg-white shadow-xl transition-transform duration-200 ease-out"
+            style={{ transform: drawerOpen ? "translateX(0)" : "translateX(100%)" }}
+          >
+            {selectedEnrollment && (
+              <EnrollmentDrawer
+                key={selectedEnrollment.id}
+                enrollment={selectedEnrollment}
+                feature={feature}
+                canWrite={!!canWrite(currentUser)}
+                onClose={() => setSelectedEnrollmentId(null)}
+                onUpdated={load}
+                onAction={() => { setSelectedEnrollmentId(null); load(); }}
+                onRemoved={(removedId) => { onRemoved(removedId); setSelectedEnrollmentId(null); }}
+              />
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }

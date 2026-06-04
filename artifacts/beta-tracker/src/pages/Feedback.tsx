@@ -607,7 +607,7 @@ export default function FeedbackPage() {
                 <tbody className="divide-y divide-gray-50">
                   {testimonials.map((t: any) => {
                     const dateStr = t.callDate
-                      ? new Date(t.callDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                      ? new Date(t.callDate + 'T00:00:00').toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                       : "—";
                     return (
                       <tr key={t.id} className="hover:bg-gray-50">

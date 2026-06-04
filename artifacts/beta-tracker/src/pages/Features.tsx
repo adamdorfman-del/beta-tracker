@@ -68,7 +68,7 @@ export default function FeaturesPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [page, setPage] = useState(1);
   const [showNew, setShowNew] = useState(false);
-  const [sortCol, setSortCol] = useState("");
+  const [sortCol, setSortCol] = useState("end_date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [deleteTarget, setDeleteTarget] = useState<BetaFeature | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -170,6 +170,7 @@ export default function FeaturesPage() {
                 {([
                   { key: "name",       label: "Feature",    cls: "" },
                   { key: "status",     label: "Status",     cls: "hidden sm:table-cell" },
+                  { key: "end_date",   label: "End date",   cls: "hidden sm:table-cell" },
                   { key: "enrollment", label: "Enrollment", cls: "hidden md:table-cell" },
                   { key: "feedback",   label: "Feedback",   cls: "hidden lg:table-cell" },
                   { key: "pm",         label: "Owner PM",   cls: "hidden xl:table-cell" },
@@ -189,20 +190,21 @@ export default function FeaturesPage() {
             <tbody className="divide-y divide-gray-100">
               {features.map((f) => {
                 const funnel = (f as any).enrollmentFunnel ?? { nominated: 0, approved: 0, enrolled: 0, using: 0, accepted: 0, total: 0 };
-                const durationDays = f.closedAt
-                  ? Math.round((new Date(f.closedAt).getTime() - new Date(f.startDate).getTime()) / 86400000)
-                  : Math.round((Date.now() - new Date(f.startDate).getTime()) / 86400000);
                 return (
                   <tr key={f.id} className="hover:bg-gray-50">
                     <td className="px-4 py-3">
                       <Link href={`/features/${(f as any).slug ?? f.id}`} className="block">
                         <p className="text-sm font-medium text-gray-900 hover:text-blue-600">{f.name}</p>
-                        {(f as any).projectedEndDate ? (
-                          <p className={`text-xs ${new Date((f as any).projectedEndDate) < new Date() ? "text-red-500" : "text-gray-400"}`}>
-                            Ends {new Date((f as any).projectedEndDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
-                          </p>
-                        ) : (
-                          <p className="text-xs text-gray-400">{durationDays}d elapsed</p>
+                        {f.startDate ? (() => {
+                          const d = new Date(f.startDate + 'T00:00:00');
+                          const started = d <= new Date();
+                          return (
+                            <p className="text-xs text-gray-400">
+                              {started ? "Started" : "Starts"} {d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </p>
+                          );
+                        })() : (
+                          <p className="text-xs text-gray-400">Start date not set</p>
                         )}
                       </Link>
                     </td>
@@ -226,6 +228,15 @@ export default function FeaturesPage() {
                           </span>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3 hidden sm:table-cell">
+                      {(f as any).projectedEndDate ? (
+                        <span className={`text-sm ${new Date((f as any).projectedEndDate + 'T00:00:00') < new Date() ? "text-red-500" : "text-gray-700"}`}>
+                          {new Date((f as any).projectedEndDate + 'T00:00:00').toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-300">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
                       <MiniFunnelBar funnel={funnel} />

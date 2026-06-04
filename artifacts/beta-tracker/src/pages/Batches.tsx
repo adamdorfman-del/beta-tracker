@@ -843,6 +843,7 @@ export default function BatchesPage() {
   async function load() {
     setLoading(true);
     try {
+      await api.batches.trigger().catch(() => {});
       const [batchData, userData] = await Promise.all([api.batches.list(), api.users.list()]);
       setBatches(batchData.batches ?? []);
       setUsers(userData.users ?? []);
@@ -1057,30 +1058,6 @@ export default function BatchesPage() {
     }
   }
 
-  async function trigger() {
-    try {
-      await api.batches.trigger();
-      await load();
-      showToast("Batch grouping complete.");
-    } catch (e: any) {
-      alert(e.data?.error ?? "Failed");
-    }
-  }
-
-  async function triggerForFeature(featureId: string) {
-    try {
-      const r = await api.batches.triggerForFeature(featureId);
-      await load();
-      showToast(
-        r.batched > 0
-          ? `${r.batched} new batch${r.batched !== 1 ? "es" : ""} created.`
-          : "No new batches — all approved enrollments are already batched.",
-      );
-    } catch (e: any) {
-      alert(e.data?.error ?? "Failed");
-    }
-  }
-
   async function sendBatch(id: string) {
     try {
       await api.batches.send(id, { overrideCooldown: false });
@@ -1160,15 +1137,7 @@ export default function BatchesPage() {
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-gray-900">Outreach</h1>
-        <button
-          onClick={trigger}
-          className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-        >
-          Trigger Batch Grouping
-        </button>
-      </div>
+      <h1 className="text-2xl font-semibold text-gray-900">Outreach</h1>
 
       {/* View toggle */}
       <div className="inline-flex items-center rounded-lg border border-gray-200 bg-gray-100 p-0.5">
@@ -1194,7 +1163,7 @@ export default function BatchesPage() {
         <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
           <p className="text-lg text-gray-400">No batches yet.</p>
           <p className="mt-1 text-sm text-gray-300">
-            Trigger batch grouping to create batches from approved enrollments.
+            Approve enrollments to automatically create outreach batches.
           </p>
         </div>
       ) : view === "feature" ? (
@@ -1220,17 +1189,9 @@ export default function BatchesPage() {
                     </Link>
                     {feature.status && <BetaStatusBadge status={feature.status} />}
                   </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <span className="text-xs text-gray-400">
-                      {fBatches.length} client{fBatches.length !== 1 ? "s" : ""}
-                    </span>
-                    <button
-                      onClick={() => triggerForFeature(featureId)}
-                      className="rounded border border-gray-200 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-50"
-                    >
-                      Trigger
-                    </button>
-                  </div>
+                  <span className="text-xs text-gray-400">
+                    {fBatches.length} client{fBatches.length !== 1 ? "s" : ""}
+                  </span>
                 </div>
 
                 {!collapsed && (

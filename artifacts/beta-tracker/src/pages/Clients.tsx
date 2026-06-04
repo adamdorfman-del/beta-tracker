@@ -298,9 +298,9 @@ export default function ClientsPage() {
                           )}
                           {c.tier != null       && <div><p className="font-medium text-gray-600">Tier</p><p>T{c.tier}</p></div>}
                           {c.vertical           && <div><p className="font-medium text-gray-600">Vertical</p><p>{c.vertical}</p></div>}
-                          {c.contractRenewalDate && <div><p className="font-medium text-gray-600">Renewal Date</p><p>{new Date(c.contractRenewalDate).toLocaleDateString()}</p></div>}
+                          {c.contractRenewalDate && <div><p className="font-medium text-gray-600">Renewal Date</p><p>{new Date(c.contractRenewalDate + 'T00:00:00').toLocaleDateString()}</p></div>}
                           {c.productSubscriptions && <div><p className="font-medium text-gray-600">Products</p><p>{c.productSubscriptions}</p></div>}
-                          {c.lastOutreachDate   && <div><p className="font-medium text-gray-600">Last Outreach</p><p>{new Date(c.lastOutreachDate).toLocaleDateString()}</p></div>}
+                          {c.lastOutreachDate   && <div><p className="font-medium text-gray-600">Last Outreach</p><p>{new Date(c.lastOutreachDate + 'T00:00:00').toLocaleDateString()}</p></div>}
                           {c.notes              && <div className="col-span-2"><p className="font-medium text-gray-600">Notes</p><p>{c.notes}</p></div>}
                         </div>
                         {expandedClient?.id === c.id ? (

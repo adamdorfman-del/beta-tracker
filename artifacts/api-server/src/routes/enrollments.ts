@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db, betaEnrollmentsTable, usersTable, clientsTable, betaFeaturesTable, auditLogsTable, outreachBatchEnrollmentsTable } from "../lib/db";
 import { ok, err, parsePagination } from "../lib/helpers";
 import { eq, and, desc, count, inArray, isNotNull } from "drizzle-orm";
+import { triggerBatching } from "../lib/batching";
 
 const router = Router();
 
@@ -156,7 +157,7 @@ router.patch("/:id", async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    const ALLOWED = ["enrolled", "using", "accepted"];
+    const ALLOWED = ["nominated", "csm_approved", "enrolled", "using", "accepted"];
     if (!status || !ALLOWED.includes(status)) {
       return err(res, `status must be one of: ${ALLOWED.join(", ")}.`);
     }
@@ -227,6 +228,10 @@ router.post("/:id/approve", async (req, res) => {
     await db.insert(auditLogsTable).values({
       entityType: "BetaEnrollment", entityId: id, action: "csm_approved",
       changedById: adminUser.id, priorState: enrollment as any, nextState: updated as any,
+    });
+
+    triggerBatching(updated.featureId).catch((batchErr) => {
+      req.log.error({ err: batchErr }, "Auto-batch failed after approval");
     });
 
     return ok(res, updated);

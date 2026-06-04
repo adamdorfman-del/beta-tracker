@@ -77,6 +77,9 @@ router.get("/", async (req, res) => {
         case "enrollment": return isDesc ? desc(betaFeaturesTable.targetTesterCount) : asc(betaFeaturesTable.targetTesterCount);
         case "pm":      return isDesc ? desc(betaFeaturesTable.ownerPmId)  : asc(betaFeaturesTable.ownerPmId);
         case "start":   return isDesc ? desc(betaFeaturesTable.startDate)  : asc(betaFeaturesTable.startDate);
+        case "end_date": return isDesc
+          ? desc(sql`COALESCE(projected_end_date, '9999-12-31')`)
+          : asc(sql`COALESCE(projected_end_date, '9999-12-31')`);
         default:        return desc(betaFeaturesTable.createdAt);
       }
     })();
