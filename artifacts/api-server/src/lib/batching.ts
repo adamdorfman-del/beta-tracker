@@ -1,11 +1,12 @@
 import { db, outreachBatchesTable, outreachBatchEnrollmentsTable, betaEnrollmentsTable } from "./db";
-import { eq, and, count, inArray } from "drizzle-orm";
+import { eq, and, count, inArray, notInArray } from "drizzle-orm";
+
+const BATCHABLE_STATUSES = ["csm_approved", "enrolled", "using", "accepted"] as const;
 
 export async function triggerBatching(featureId: string | null): Promise<number> {
   const query = db.select().from(betaEnrollmentsTable)
     .where(and(
-      eq(betaEnrollmentsTable.csmApprovalStatus, "approved"),
-      eq(betaEnrollmentsTable.testerStatus, "csm_approved"),
+      inArray(betaEnrollmentsTable.testerStatus, [...BATCHABLE_STATUSES] as any),
       ...(featureId ? [eq(betaEnrollmentsTable.featureId, featureId)] : []),
     ));
 
@@ -46,12 +47,12 @@ export async function triggerBatching(featureId: string | null): Promise<number>
       .where(eq(outreachBatchEnrollmentsTable.batchId, batchId));
     const batchEnrollmentIds = batchEntries.map(be => be.enrollmentId);
     if (batchEnrollmentIds.length > 0) {
-      const [{ value: pendingCount }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
+      const [{ value: notReadyCount }] = await db.select({ value: count() }).from(betaEnrollmentsTable)
         .where(and(
           inArray(betaEnrollmentsTable.id, batchEnrollmentIds),
-          eq(betaEnrollmentsTable.csmApprovalStatus, "pending")
+          notInArray(betaEnrollmentsTable.testerStatus, [...BATCHABLE_STATUSES] as any)
         ));
-      if (pendingCount === 0) {
+      if (notReadyCount === 0) {
         await db.update(outreachBatchesTable).set({ batchStatus: "ready", updatedAt: new Date() })
           .where(and(eq(outreachBatchesTable.id, batchId), eq(outreachBatchesTable.batchStatus, "pending")));
       }
