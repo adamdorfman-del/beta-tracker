@@ -492,6 +492,7 @@ const NominatePanel = React.memo(function NominatePanel({ featureId, enrolledCli
   const sentinelRef = useInfiniteScroll(loadMore, !pageLoading && clients.length < total, scrollRef);
 
   async function nominate(clientId: string, force = false) {
+    console.log('[nominate] called, clientId:', clientId);
     setResult(null); setPending(true);
 
     // Optimistically remove the client immediately — no scroll reset, no re-fetch
@@ -502,10 +503,14 @@ const NominatePanel = React.memo(function NominatePanel({ featureId, enrolledCli
     setTotal(prev => prev - 1);
 
     try {
+      console.log('[nominate] calling api.enrollments.create');
       const data = await api.enrollments.create({ clientId, featureId, force });
+      console.log('[nominate] api success, data:', JSON.stringify(data));
       if (data.warning) setResult({ warning: data.warning });
+      console.log('[nominate] calling onEnrolled');
       onEnrolled(data.enrollment, client);
     } catch (e: any) {
+      console.log('[nominate] api error:', e?.message, e?.data);
       // Rollback: restore the client at its original position
       nominatedRef.current = new Set([...nominatedRef.current].filter(id => id !== clientId));
       setClients(prev => { const next = [...prev]; next.splice(clientIndex, 0, client); return next; });
@@ -1004,6 +1009,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   // Stable callback — never changes reference, so React.memo on NominatePanel
   // won't re-render the panel when the enrollment table updates.
   const handleEnrolled = useCallback((enrollment: any, client: any) => { // eslint-disable-line @typescript-eslint/no-unused-vars
+    console.log('handleEnrolled called', enrollment?.id, 'client:', client?.name);
     loadRef.current();
   }, []);
 
@@ -1021,6 +1027,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
           return;
         }
         const featureEnrollments = f.enrollments ?? [];
+        console.log('load response enrollments[0]:', JSON.stringify(featureEnrollments[0]));
         setFeature(f);
         setEnrollments(featureEnrollments);
         setInitialEnrolledIds(new Set(featureEnrollments.map((e: any) => e.clientId)));
@@ -1313,6 +1320,7 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
               }).map((e) => {
                 const isSelected = selectedEnrollmentId === e.id;
                 const c = e.client as any;
+                console.log('rendering enrollment:', e.id, c?.name, 'csmOwner:', c?.csmOwner);
                 return (
                   <tr
                     key={e.id}
