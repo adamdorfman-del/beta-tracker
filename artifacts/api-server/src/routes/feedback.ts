@@ -234,6 +234,10 @@ router.put("/:id", async (req, res) => {
     if (jiraTicketUrl !== undefined)       update.jiraTicketUrl       = jiraTicketUrl || null;
 
     const [updated] = await db.update(feedbackTable).set(update as any).where(eq(feedbackTable.id, req.params.id)).returning();
+    await db.insert(auditLogsTable).values({
+      entityType: "Feedback", entityId: entry.id, action: "feedback_edited",
+      changedById: currentUser.id, priorState: entry as any, nextState: updated as any,
+    });
     return ok(res, updated);
   } catch (e) {
     req.log.error(e);
@@ -254,6 +258,10 @@ router.delete("/:id", async (req, res) => {
     if (!canDelete) return err(res, "Forbidden", 403);
 
     await db.delete(feedbackTable).where(eq(feedbackTable.id, req.params.id));
+    await db.insert(auditLogsTable).values({
+      entityType: "Feedback", entityId: entry.id, action: "feedback_deleted",
+      changedById: currentUser.id, priorState: entry as any,
+    });
     return res.status(204).end();
   } catch (e) {
     req.log.error(e);

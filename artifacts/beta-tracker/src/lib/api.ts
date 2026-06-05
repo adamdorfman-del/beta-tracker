@@ -98,6 +98,13 @@ export const api = {
     update: (id: string, body: object) => apiFetch(`/feedback/${id}`, { method: "PUT", body: JSON.stringify(body) }),
     remove: (id: string) => apiFetch(`/feedback/${id}`, { method: "DELETE" }),
   },
+  auditLogs: {
+    list: (params?: Record<string, string>) => {
+      const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+      return apiFetch(`/audit-logs${qs}`);
+    },
+    actions: () => apiFetch("/audit-logs/actions"),
+  },
   testimonials: {
     list: (params?: Record<string, string>) => {
       const qs = params ? "?" + new URLSearchParams(params).toString() : "";

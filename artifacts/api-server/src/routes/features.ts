@@ -152,6 +152,11 @@ router.post("/", pmOrAdmin, async (req, res) => {
       targetTesterCount: targetTesterCount ?? 15,
       projectedEndDate: projectedEndDate ?? null,
     }).returning();
+    const adminUser = await getAdminUser();
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaFeature", entityId: feature.id, action: "created",
+      changedById: adminUser.id, nextState: feature as any,
+    });
     return ok(res, feature, 201);
   } catch (e) {
     req.log.error(e);
@@ -274,6 +279,11 @@ router.put("/:id", pmOrAdmin, async (req, res) => {
     update.updatedAt = new Date();
     const [updated] = await db.update(betaFeaturesTable).set(update as any).where(eq(betaFeaturesTable.id, id)).returning();
     if (!updated) return err(res, "Feature not found.", 404);
+    const adminUser = await getAdminUser();
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaFeature", entityId: id, action: "updated",
+      changedById: adminUser.id, priorState: existing as any, nextState: updated as any,
+    });
     return ok(res, updated);
   } catch (e) {
     req.log.error(e);
@@ -412,6 +422,13 @@ router.delete("/:id", pmOrAdmin, async (req, res) => {
 
     // 6. the feature itself
     await db.delete(betaFeaturesTable).where(eq(betaFeaturesTable.id, id));
+
+    // Log deletion after cascade so this entry isn't swept (no FK on entityId)
+    const adminUser = await getAdminUser();
+    await db.insert(auditLogsTable).values({
+      entityType: "BetaFeature", entityId: id, action: "deleted",
+      changedById: adminUser.id, priorState: feature as any,
+    });
 
     return res.status(204).end();
   } catch (e) {

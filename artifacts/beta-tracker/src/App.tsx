@@ -13,6 +13,7 @@ import BatchesPage from "@/pages/Batches";
 import ReportsPage from "@/pages/Reports";
 import StakeholdersPage from "@/pages/Stakeholders";
 import FeedbackPage from "@/pages/Feedback";
+import ActivityLogPage from "@/pages/ActivityLog";
 
 const clerkPubKey = publishableKeyFromHost(
   window.location.hostname,
@@ -193,6 +194,7 @@ function AuthenticatedLayout() {
         <Route path="/feedback" component={FeedbackPage} />
         <Route path="/reports" component={ReportsPage} />
         <Route path="/stakeholders" component={StakeholdersPage} />
+        <Route path="/activity-log" component={ActivityLogPage} />
         <Route
           component={() => (
             <div className="py-16 text-center">

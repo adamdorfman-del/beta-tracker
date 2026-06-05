@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, outreachBatchesTable, outreachBatchEnrollmentsTable, betaEnrollmentsTable, clientsTable, usersTable, betaFeaturesTable } from "../lib/db";
+import { db, outreachBatchesTable, outreachBatchEnrollmentsTable, betaEnrollmentsTable, clientsTable, usersTable, betaFeaturesTable, auditLogsTable } from "../lib/db";
 import { ok, err } from "../lib/helpers";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { triggerBatching } from "../lib/batching";
@@ -192,6 +192,11 @@ router.post("/:id/send", async (req, res) => {
 
     await db.update(clientsTable).set({ lastOutreachDate: now.toISOString().split("T")[0], updatedAt: now })
       .where(eq(clientsTable.id, batch.clientId));
+
+    await db.insert(auditLogsTable).values({
+      entityType: "OutreachBatch", entityId: id, action: "outreach_sent",
+      changedById: adminUser.id, nextState: { batchId: id, clientId: batch.clientId, enrollmentIds } as any,
+    });
 
     return ok(res, { success: true });
   } catch (e) {

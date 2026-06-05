@@ -12,6 +12,7 @@ const MAIN_NAV = [
 const ADMIN_NAV = [
   { href: "/clients",      label: "Clients" },
   { href: "/stakeholders", label: "Stakeholders" },
+  { href: "/activity-log", label: "Activity Log" },
 ];
 
 const STORAGE_KEY = "nav-admin-open";
