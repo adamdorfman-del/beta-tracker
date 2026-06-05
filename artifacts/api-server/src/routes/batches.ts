@@ -3,16 +3,11 @@ import { db, outreachBatchesTable, outreachBatchEnrollmentsTable, betaEnrollment
 import { ok, err } from "../lib/helpers";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { triggerBatching } from "../lib/batching";
+import { getRequestUser } from "../lib/currentUser";
 
 const router = Router();
 
 const COOLDOWN_DAYS = 30;
-
-async function getAdminUser() {
-  const [admin] = await db.select().from(usersTable).where(eq(usersTable.role, "admin")).limit(1);
-  if (!admin) throw new Error("No admin user found.");
-  return admin;
-}
 
 // GET /api/batches
 router.get("/", async (req, res) => {
@@ -158,7 +153,7 @@ router.post("/trigger-for-feature/:featureId", async (req, res) => {
 // POST /api/batches/:id/send
 router.post("/:id/send", async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const { id } = req.params;
     const { overrideCooldown } = req.body ?? {};
 

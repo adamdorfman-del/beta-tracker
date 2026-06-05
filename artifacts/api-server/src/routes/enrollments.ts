@@ -3,19 +3,13 @@ import { db, betaEnrollmentsTable, usersTable, clientsTable, betaFeaturesTable, 
 import { ok, err, parsePagination } from "../lib/helpers";
 import { eq, and, desc, count, inArray, isNotNull } from "drizzle-orm";
 import { triggerBatching } from "../lib/batching";
+import { getRequestUser } from "../lib/currentUser";
 
 const router = Router();
 
 const OUTREACH_WINDOW_DAYS = 14;
 const ACTIVE_STATUSES = ["nominated", "csm_pending", "csm_approved", "outreach_sent"] as const;
 
-async function getAdminUser() {
-  const [admin] = await db.select().from(usersTable).where(eq(usersTable.role, "admin")).limit(1);
-  if (admin) return admin;
-  const [fallback] = await db.select().from(usersTable).limit(1);
-  if (!fallback) throw new Error("No users found in the system.");
-  return fallback;
-}
 
 // GET /api/enrollments
 router.get("/", async (req, res) => {
@@ -84,7 +78,7 @@ router.get("/", async (req, res) => {
 // POST /api/enrollments
 router.post("/", async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const { clientId, featureId, force } = req.body;
     if (!clientId || !featureId) return err(res, "clientId and featureId are required.");
 
@@ -162,7 +156,7 @@ router.post("/", async (req, res) => {
 // PATCH /api/enrollments/:id
 router.patch("/:id", async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const { id } = req.params;
     const { status } = req.body;
 
@@ -194,7 +188,7 @@ router.patch("/:id", async (req, res) => {
 // DELETE /api/enrollments/:id
 router.delete("/:id", async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const { id } = req.params;
     const [enrollment] = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
     if (!enrollment) return err(res, "Enrollment not found.", 404);
@@ -220,7 +214,7 @@ router.delete("/:id", async (req, res) => {
 // POST /api/enrollments/:id/approve
 router.post("/:id/approve", async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const { id } = req.params;
 
     const [enrollment] = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
@@ -253,7 +247,7 @@ router.post("/:id/approve", async (req, res) => {
 // POST /api/enrollments/:id/unapprove
 router.post("/:id/unapprove", async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const { id } = req.params;
 
     const [enrollment] = await db.select().from(betaEnrollmentsTable).where(eq(betaEnrollmentsTable.id, id));
@@ -285,7 +279,7 @@ router.post("/:id/unapprove", async (req, res) => {
 // POST /api/enrollments/:id/reject
 router.post("/:id/reject", async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const { id } = req.params;
     const { reason } = req.body;
     if (!reason?.trim()) return err(res, "reason is required.");
@@ -316,7 +310,7 @@ router.post("/:id/reject", async (req, res) => {
 // PUT /api/enrollments/:id/status
 router.put("/:id/status", async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const { id } = req.params;
     const { testerStatus, dropReason } = req.body;
     if (!testerStatus) return err(res, "testerStatus is required.");

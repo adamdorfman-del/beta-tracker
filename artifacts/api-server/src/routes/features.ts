@@ -5,6 +5,7 @@ import { eq, and, or, asc, desc, count, inArray, notExists, sql } from "drizzle-
 import { logger } from "../lib/logger";
 import { requireRole } from "../middlewares/requireRole";
 import { generateUniqueSlug } from "../lib/slugify";
+import { getRequestUser } from "../lib/currentUser";
 
 async function findFeature(slugOrId: string) {
   let [feature] = await db.select().from(betaFeaturesTable).where(eq(betaFeaturesTable.slug, slugOrId));
@@ -152,7 +153,7 @@ router.post("/", pmOrAdmin, async (req, res) => {
       targetTesterCount: targetTesterCount ?? 15,
       projectedEndDate: projectedEndDate ?? null,
     }).returning();
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     await db.insert(auditLogsTable).values({
       entityType: "BetaFeature", entityId: feature.id, action: "created",
       changedById: adminUser.id, nextState: feature as any,
@@ -279,7 +280,7 @@ router.put("/:id", pmOrAdmin, async (req, res) => {
     update.updatedAt = new Date();
     const [updated] = await db.update(betaFeaturesTable).set(update as any).where(eq(betaFeaturesTable.id, id)).returning();
     if (!updated) return err(res, "Feature not found.", 404);
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     await db.insert(auditLogsTable).values({
       entityType: "BetaFeature", entityId: id, action: "updated",
       changedById: adminUser.id, priorState: existing as any, nextState: updated as any,
@@ -294,7 +295,7 @@ router.put("/:id", pmOrAdmin, async (req, res) => {
 // POST /api/features/:id/close
 router.post("/:id/close", pmOrAdmin, async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const { closeReason, closeNotes, force } = req.body;
 
     if (!closeReason) return err(res, "closeReason is required.");
@@ -334,7 +335,7 @@ router.post("/:id/close", pmOrAdmin, async (req, res) => {
 // POST /api/features/:id/clone
 router.post("/:id/clone", pmOrAdmin, async (req, res) => {
   try {
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     const body = req.body ?? {};
     const source = await findFeature(req.params.id);
     if (!source) return err(res, "Feature not found.", 404);
@@ -424,7 +425,7 @@ router.delete("/:id", pmOrAdmin, async (req, res) => {
     await db.delete(betaFeaturesTable).where(eq(betaFeaturesTable.id, id));
 
     // Log deletion after cascade so this entry isn't swept (no FK on entityId)
-    const adminUser = await getAdminUser();
+    const adminUser = await getRequestUser(req);
     await db.insert(auditLogsTable).values({
       entityType: "BetaFeature", entityId: id, action: "deleted",
       changedById: adminUser.id, priorState: feature as any,
@@ -436,13 +437,5 @@ router.delete("/:id", pmOrAdmin, async (req, res) => {
     return err(res, "Internal error", 500);
   }
 });
-
-async function getAdminUser() {
-  const [admin] = await db.select().from(usersTable).where(eq(usersTable.role, "admin")).limit(1);
-  if (admin) return admin;
-  const [fallback] = await db.select().from(usersTable).limit(1);
-  if (!fallback) throw new Error("No users found in the system.");
-  return fallback;
-}
 
 export default router;
