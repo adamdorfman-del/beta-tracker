@@ -996,10 +996,15 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
   const [feedbackDetail, setFeedbackDetail] = useState<any>(null);
   const [, navigate] = useLocation();
 
+  // loadRef keeps a stable pointer to the latest load() so handleEnrolled can
+  // call it without adding load to useCallback deps (which would break React.memo).
+  const loadRef = useRef<() => void>(load);
+  loadRef.current = load;
+
   // Stable callback — never changes reference, so React.memo on NominatePanel
   // won't re-render the panel when the enrollment table updates.
   const handleEnrolled = useCallback((enrollment: any, client: any) => { // eslint-disable-line @typescript-eslint/no-unused-vars
-    setEnrollments(prev => [...prev, enrollment]);
+    loadRef.current();
   }, []);
 
   function toggleEnrollSort(col: string) {
