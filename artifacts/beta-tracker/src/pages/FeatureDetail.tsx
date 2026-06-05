@@ -998,12 +998,8 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
 
   // Stable callback — never changes reference, so React.memo on NominatePanel
   // won't re-render the panel when the enrollment table updates.
-  const handleEnrolled = useCallback((enrollment: any, client: any) => {
-    const optimistic = {
-      ...enrollment,
-      client: { id: client.id, name: client.name, accountHealth: client.accountHealth },
-    };
-    setEnrollments(prev => [...prev, optimistic]);
+  const handleEnrolled = useCallback((enrollment: any, client: any) => { // eslint-disable-line @typescript-eslint/no-unused-vars
+    setEnrollments(prev => [...prev, enrollment]);
   }, []);
 
   function toggleEnrollSort(col: string) {

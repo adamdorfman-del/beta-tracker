@@ -143,7 +143,16 @@ router.post("/", async (req, res) => {
       changedById: adminUser.id, nextState: enrollment as any,
     });
 
-    return res.status(201).json({ enrollment, warning });
+    const ownerIds = [client.csmOwnerId, ...(client.aeOwnerId ? [client.aeOwnerId] : [])];
+    const owners = await db.select().from(usersTable).where(inArray(usersTable.id, ownerIds));
+    const ownerMap = Object.fromEntries(owners.map(u => [u.id, u]));
+    const enrichedClient = {
+      ...client,
+      csmOwner: ownerMap[client.csmOwnerId] ?? null,
+      aeOwner: client.aeOwnerId ? (ownerMap[client.aeOwnerId] ?? null) : null,
+    };
+
+    return res.status(201).json({ enrollment: { ...enrollment, client: enrichedClient }, warning });
   } catch (e) {
     req.log.error(e);
     return err(res, "Internal error", 500);
