@@ -31,6 +31,11 @@ function describeLog(log: any, clientMap: Record<string, string>, featureMap: Re
     case "deleted":             return `Deleted beta${featureName ? `: ${featureName}` : ""}`;
     case "closed":              return `Closed beta${featureName ? `: ${featureName}` : ""}`;
     case "cloned":              return `Cloned beta${featureName ? `: ${featureName}` : ""}`;
+    case "beta_eligibility_override": {
+      const name = state?.clientName ?? "a client";
+      const enabled = state?.betaEligibleOverride;
+      return enabled ? `Enabled beta override for ${name}` : `Disabled beta override for ${name}`;
+    }
     default:                    return log.action.replace(/_/g, " ").replace(/^\w/, (c: string) => c.toUpperCase());
   }
 }
@@ -48,6 +53,7 @@ function categoryForAction(action: string): string {
     case "outreach_sent":                       return "outreach";
     case "status_change":                       return "status";
     case "deleted":                             return "removal";
+    case "beta_eligibility_override":           return "admin";
     default:                                    return "feature";
   }
 }

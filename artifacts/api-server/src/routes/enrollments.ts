@@ -88,7 +88,7 @@ router.post("/", async (req, res) => {
     const [feature] = await db.select().from(betaFeaturesTable).where(eq(betaFeaturesTable.id, featureId));
     if (!feature) return err(res, "Feature not found.", 404);
 
-    if (client.accountHealth === "red") {
+    if (client.accountHealth === "red" && !client.betaEligibleOverride) {
       return err(res, "Client account health is red — nomination blocked.");
     }
     if (feature.status === "complete") {

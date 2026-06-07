@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const SEGMENTS = ["Strategic", "Enterprise", "Commercial", "Professional", "Channel"] as const;
 const HEALTH_OPTIONS = [
@@ -41,8 +42,10 @@ interface Props {
 export function ClientModal({ client, onClose, onSaved }: Props) {
   const [users, setUsers] = useState<any[]>([]);
   const [form, setForm] = useState<Record<string, string>>(client ? fromClient(client) : EMPTY);
+  const [betaEligibleOverride, setBetaEligibleOverride] = useState<boolean>(client?.betaEligibleOverride ?? false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const currentUser = useCurrentUser();
 
   useEffect(() => {
     api.users.list().then((d) => setUsers(d.users ?? [])).catch(() => {});
@@ -60,7 +63,9 @@ export function ClientModal({ client, onClose, onSaved }: Props) {
     setSaving(true); setError(null);
     try {
       if (client) {
-        await api.clients.update(client.id, form);
+        const payload: Record<string, unknown> = { ...form };
+        if (currentUser?.role === "admin") payload.betaEligibleOverride = betaEligibleOverride;
+        await api.clients.update(client.id, payload);
       } else {
         await api.clients.create(form);
       }
@@ -139,7 +144,10 @@ export function ClientModal({ client, onClose, onSaved }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Account Health</label>
-              <select value={form.accountHealth} onChange={(e) => set("accountHealth", e.target.value)} className={inputCls}>
+              <select value={form.accountHealth} onChange={(e) => {
+                set("accountHealth", e.target.value);
+                if (e.target.value !== "red") setBetaEligibleOverride(false);
+              }} className={inputCls}>
                 {HEALTH_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </div>
@@ -148,6 +156,24 @@ export function ClientModal({ client, onClose, onSaved }: Props) {
               <input value={form.vertical} onChange={(e) => set("vertical", e.target.value)} className={inputCls} placeholder="e.g. Real Estate" />
             </div>
           </div>
+
+          {client && form.accountHealth === "red" && currentUser?.role === "admin" && (
+            <div className="flex items-center justify-between rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5">
+              <div>
+                <p className="text-sm font-medium text-amber-900">Allow beta participation despite red health</p>
+                <p className="text-xs text-amber-700 mt-0.5">Admin override — enables this client in the Add Beta Testers panel</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={betaEligibleOverride}
+                onClick={() => setBetaEligibleOverride(v => !v)}
+                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${betaEligibleOverride ? "bg-amber-500" : "bg-gray-300"}`}
+              >
+                <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${betaEligibleOverride ? "translate-x-4" : "translate-x-0"}`} />
+              </button>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>

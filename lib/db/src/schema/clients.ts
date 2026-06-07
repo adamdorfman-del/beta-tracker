@@ -19,6 +19,7 @@ export const clientsTable = pgTable("clients", {
   contractRenewalDate: date("contract_renewal_date"),
   productSubscriptions: text("product_subscriptions"),
   outreachLock: boolean("outreach_lock").notNull().default(false),
+  betaEligibleOverride: boolean("beta_eligible_override").notNull().default(false),
   lastOutreachDate: date("last_outreach_date"),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

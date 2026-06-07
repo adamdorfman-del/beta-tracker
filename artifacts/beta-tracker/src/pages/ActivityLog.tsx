@@ -12,6 +12,7 @@ const CATEGORY_STYLES: Record<string, { label: string; cls: string }> = {
   outreach:   { label: "Outreach",     cls: "bg-amber-100 text-amber-700"   },
   status:     { label: "Status",       cls: "bg-gray-100 text-gray-600"     },
   feature:    { label: "Feature",      cls: "bg-gray-100 text-gray-600"     },
+  admin:      { label: "Admin",        cls: "bg-orange-100 text-orange-700" },
 };
 
 function CategoryBadge({ category }: { category: string }) {
@@ -49,6 +50,7 @@ const ACTION_LABELS: Record<string, string> = {
   deleted:              "Feature deleted",
   closed:               "Feature closed",
   cloned:               "Feature cloned",
+  beta_eligibility_override: "Beta eligibility override",
 };
 
 const DATE_RANGE_OPTIONS = [

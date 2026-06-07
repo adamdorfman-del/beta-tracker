@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { db, clientsTable, usersTable, betaEnrollmentsTable, betaFeaturesTable } from "../lib/db";
+import { db, clientsTable, usersTable, betaEnrollmentsTable, betaFeaturesTable, auditLogsTable } from "../lib/db";
 import { ok, err, parsePagination } from "../lib/helpers";
 import { eq, and, asc, desc, count, inArray, ilike, isNotNull, sql } from "drizzle-orm";
+import { getRequestUser } from "../lib/currentUser";
 
 const router = Router();
 
@@ -103,6 +104,7 @@ router.get("/", async (req, res) => {
       contractRenewalDate: clientsTable.contractRenewalDate,
       productSubscriptions: clientsTable.productSubscriptions,
       outreachLock: clientsTable.outreachLock,
+      betaEligibleOverride: clientsTable.betaEligibleOverride,
       lastOutreachDate: clientsTable.lastOutreachDate,
       notes: clientsTable.notes,
       createdAt: clientsTable.createdAt,
@@ -238,13 +240,38 @@ router.put("/:id", async (req, res) => {
   const validated = validateClientBody(req.body, false);
   if ("error" in validated) return err(res, validated.error, 400);
   try {
+    const requestUser = await getRequestUser(req);
+
+    if (req.body.betaEligibleOverride !== undefined && requestUser.role !== "admin") {
+      return err(res, "Only admins can update beta eligibility override.", 403);
+    }
+
+    const [existing] = await db.select().from(clientsTable).where(eq(clientsTable.id, req.params.id));
+    if (!existing) return err(res, "Client not found.", 404);
+
     const update: any = { updatedAt: new Date() };
     const d = validated.data as any;
     const fields = ["name","crmId","csmOwnerId","aeOwnerId","segment","primaryContactName","primaryContactEmail",
       "accountHealth","vertical","contractRenewalDate","productSubscriptions","lastOutreachDate","tier"];
     for (const f of fields) { if (req.body[f] !== undefined) update[f] = d[f]; }
+
+    const betaEligibleOverride = req.body.betaEligibleOverride;
+    if (betaEligibleOverride !== undefined) update.betaEligibleOverride = !!betaEligibleOverride;
+
     const [client] = await db.update(clientsTable).set(update).where(eq(clientsTable.id, req.params.id)).returning();
     if (!client) return err(res, "Client not found.", 404);
+
+    if (betaEligibleOverride !== undefined && !!betaEligibleOverride !== existing.betaEligibleOverride) {
+      await db.insert(auditLogsTable).values({
+        entityType: "Client",
+        entityId: client.id,
+        action: "beta_eligibility_override",
+        changedById: requestUser.id,
+        priorState: { betaEligibleOverride: existing.betaEligibleOverride, clientName: existing.name } as any,
+        nextState: { betaEligibleOverride: client.betaEligibleOverride, clientName: client.name } as any,
+      });
+    }
+
     return ok(res, { client });
   } catch (e: any) {
     const pgCode = e?.cause?.code ?? e?.code;

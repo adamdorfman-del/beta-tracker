@@ -542,21 +542,29 @@ const NominatePanel = React.memo(function NominatePanel({ featureId, enrolledCli
         <p className="py-4 text-center text-sm text-gray-400">Loading…</p>
       ) : (
         <div ref={scrollRef} className="max-h-96 overflow-y-auto space-y-1">
-          {clients.map((c: any) => (
+          {clients.map((c: any) => {
+            const isRedBlocked = c.accountHealth === "red" && !c.betaEligibleOverride;
+            return (
             <div key={c.id} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
               <div className="flex items-center gap-2 min-w-0">
                 <HealthDot health={c.accountHealth} />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{c.name}</p>
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {c.name}
+                    {c.accountHealth === "red" && c.betaEligibleOverride && (
+                      <span className="ml-1.5 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Admin override</span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-400">{c.vertical ?? "—"}</p>
                 </div>
               </div>
-              <button onClick={() => nominate(c.id)} disabled={pending || c.accountHealth === "red"}
+              <button onClick={() => nominate(c.id)} disabled={pending || isRedBlocked}
                 className="ml-2 rounded bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40 flex-shrink-0">
                 Add
               </button>
             </div>
-          ))}
+            );
+          })}
           {clients.length === 0 && !loadingMore && (
             <p className="text-sm text-gray-400 py-4 text-center">No candidates found.</p>
           )}
@@ -1336,6 +1344,9 @@ export default function FeatureDetailPage({ params: { id } }: { params: { id: st
                             {c?.name}
                             {e.isOverflow && (
                               <span className="ml-1.5 rounded bg-indigo-100 px-1.5 py-0.5 text-[10px] font-medium text-indigo-700">overflow</span>
+                            )}
+                            {c?.accountHealth === "red" && c?.betaEligibleOverride && (
+                              <span className="ml-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Admin override</span>
                             )}
                           </p>
                           <p className="text-xs text-gray-400 truncate">
