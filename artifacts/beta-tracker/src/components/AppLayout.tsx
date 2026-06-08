@@ -1,11 +1,13 @@
 import { useClerk, useUser } from "@clerk/react";
 import { NavSidebar } from "./NavSidebar";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const { signOut } = useClerk();
   const { user } = useUser();
+  useCurrentUser(); // prime the module-level cache so role is available in modals
 
   const displayName =
     user?.firstName
